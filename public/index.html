@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>my1 — Dip-Buy / Take-Profit Engine</title>
+  <style>
+    body{font-family: system-ui,-apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:24px}
+    h1{margin-bottom:8px}
+    .card{border:1px solid #e5e7eb; border-radius:12px; padding:16px; margin-bottom:16px; box-shadow:0 1px 2px rgba(0,0,0,.04)}
+    label{display:block; font-weight:600; margin:6px 0 4px}
+    input{width:100%; padding:10px; border:1px solid #d1d5db; border-radius:8px}
+    table{width:100%; border-collapse: collapse}
+    th,td{padding:8px 10px; border-bottom:1px solid #eee; text-align:left}
+    .row{display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:12px}
+    @media (max-width:900px){ .row{grid-template-columns:1fr 1fr} }
+    button{padding:10px 14px; border:0; border-radius:10px; background:#111827; color:#fff; cursor:pointer}
+    .muted{color:#6b7280; font-size:14px}
+  </style>
+</head>
+<body>
+  <h1>my1 — Dip-Buy / Take-Profit Engine</h1>
+  <p class="muted">Binance keys stay on the server. Rules are stored in a local JSON file — no DB needed.</p>
+
+  <div class="card">
+    <div class="row">
+      <div><label>Symbol</label><input id="symbol" placeholder="e.g., SOLUSDT"></div>
+      <div><label>Buy on dip %</label><input id="dip" type="text" inputmode="decimal" placeholder="2"></div>
+      <div><label>Take-profit %</label><input id="tp" type="text" inputmode="decimal" placeholder="2"></div>
+      <div><label>Budget (USDT)</label><input id="budget" type="text" inputmode="decimal" placeholder="50"></div>
+    </div>
+    <div style="margin-top:10px">
+      <button onclick="addRule()">Add rule</button>
+      <button onclick="saveRules()" style="background:#16a34a; margin-inline-start:8px">Save & run</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Current rules</h3>
+    <table id="rulesTable">
+      <thead><tr><th>Symbol</th><th>Dip %</th><th>TP %</th><th>Budget</th><th>Status</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+<script>
+// Normalize decimals safely: convert "1,5" -> "1.5", trim spaces
+function toNumberSafe(v){
+  if (typeof v !== "string") v = String(v ?? "");
+  v = v.replace(/\s+/g, "").replace(",", ".");
+  const x = Number(v);
+  return Number.isFinite(x) ? x : NaN;
+}
+
+let rules = [];
+
+function addRule(){
+  const r = {
+    symbol: (document.getElementById('symbol').value || "").trim().toUpperCase(),
+    dipPct: toNumberSafe(document.getElementById('dip').value),
+    tpPct: toNumberSafe(document.getElementById('tp').value),
+    budgetUSDT: toNumberSafe(document.getElementById('budget').value),
+    enabled: true
+  };
+  if(!r.symbol) return alert('Symbol is required');
+  if(!(r.dipPct>0)) return alert('Dip % must be a positive number');
+  if(!(r.tpPct>0)) return alert('TP % must be a positive number');
+  if(!(r.budgetUSDT>0)) return alert('Budget must be a positive number');
+  rules.push(r);
+  render();
+}
+
+async function saveRules(){
+  const res = await fetch('/api/rules', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(rules)
+  });
+  const j = await res.json();
+  alert('Saved and engine running ('+j.count+' rule'+(j.count===1?'': 's')+')');
+}
+
+async function load(){
+  const res = await fetch('/api/rules');
+  rules = await res.json();
+  render();
+}
+
+function render(){
+  const tb = document.querySelector('#rulesTable tbody');
+  tb.innerHTML = '';
+  for(const r of rules){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${r.symbol}</td><td>${r.dipPct}</td><td>${r.tpPct}</td><td>${r.budgetUSDT}</td><td>${r.enabled?'Enabled':'Disabled'}</td>`;
+    tb.appendChild(tr);
+  }
+}
+
+load();
+</script>
+</body>
+</html>
