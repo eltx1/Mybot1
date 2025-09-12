@@ -10,38 +10,81 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json());
 
-// CORS allowlist
 const allowList = (process.env.ALLOWED_ORIGINS || "").split(",").map(s=>s.trim()).filter(Boolean);
 app.use((req,res,next)=>{
-  const origin = req.headers.origin || "";
-  if (allowList.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Vary", "Origin");
-    res.setHeader("Access-Control-Allow-Credentials", "true");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
-  }
-  if (req.method === "OPTIONS") return res.sendStatus(200);
-  next();
+const origin = req.headers.origin || "";
+if (allowList.includes(origin)) {
+res.setHeader("Access-Control-Allow-Origin", origin);
+res.setHeader("Vary", "Origin");
+res.setHeader("Access-Control-Allow-Credentials", "true");
+res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
+}
+if (req.method === "OPTIONS") return res.sendStatus(200);
+next();
 });
 
-// Rules storage (JSON file)
-const rulesPath = path.join(__dirname, "data", "rules.json");
-function readRules(){ if (!fs.existsSync(rulesPath)) return []; try{ return JSON.parse(fs.readFileSync(rulesPath, "utf8")); } catch{ return []; } }
-function writeRules(r){ fs.writeFileSync(rulesPath, JSON.stringify(r, null, 2)); }
+const dataDir = path.join(__dirname, "data");
+const rulesPath = path.join(dataDir, "rules.json");
 
-app.get("/api/rules", (req,res)=>{ res.json(readRules()); });
-app.post("/api/rules", (req,res)=>{
-  const rules = Array.isArray(req.body) ? req.body : [req.body];
-  writeRules(rules);
-  res.json({ ok:true, count: rules.length });
+function ensureDataFiles() {
+try {
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+if (!fs.existsSync(rulesPath)) fs.writeFileSync(rulesPath, "[]\n", { encoding: "utf8" });
+} catch (e) {
+console.error("ensureDataFiles error:", e.message);
+}
+}
+ensureDataFiles();
+
+function safeReadJSON(file, fallback) {
+try {
+const raw = fs.readFileSync(file, "utf8");
+return JSON.parse(raw || "[]");
+} catch (e) {
+console.warn("safeReadJSON fallback:", e.message);
+return fallback;
+}
+}
+
+function readRules() {
+ensureDataFiles();
+return safeReadJSON(rulesPath, []);
+}
+
+function writeRules(r) {
+try {
+ensureDataFiles();
+const tmp = rulesPath + ".tmp";
+fs.writeFileSync(tmp, JSON.stringify(r, null, 2));
+fs.renameSync(tmp, rulesPath);
+} catch (e) {
+console.error("writeRules error:", e.message);
+}
+}
+
+app.get("/api/rules", (req, res) => { res.json(readRules()); });
+
+app.post("/api/rules", (req, res) => {
+const rules = Array.isArray(req.body) ? req.body : [req.body];
+writeRules(rules);
+res.json({ ok: true, count: rules.length });
 });
 
-// Static UI
+app.get("/healthz", (req, res) => {
+try {
+ensureDataFiles();
+res.json({ ok: true, rulesCount: readRules().length });
+} catch {
+res.status(500).json({ ok: false });
+}
+});
+
 app.use("/", express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, ()=>{ console.log("my1 engine running on port", PORT); });
+app.listen(PORT, () => {
+console.log("my1 engine running on port", PORT);
+});
 
-// Start engine
 runEngine(readRules);

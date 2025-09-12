@@ -1,0 +1,5 @@
+.env
+data/rules.json
+data/.log
+node_modules
+npm-debug.log
