@@ -1,13 +1,22 @@
 import crypto from "crypto";
 import fetch from "node-fetch";
+import fs from "fs";
 
 const BASE = process.env.BINANCE_BASE || "https://api.binance.com";
-const API_KEY = process.env.BINANCE_KEY;
-const API_SECRET = process.env.BINANCE_SECRET;
+let API_KEY = process.env.BINANCE_KEY;
+let API_SECRET = process.env.BINANCE_SECRET;
+
+if (!API_KEY || !API_SECRET) {
+  try {
+    const creds = JSON.parse(fs.readFileSync("binance-keys.json", "utf8"));
+    API_KEY = creds.BINANCE_KEY;
+    API_SECRET = creds.BINANCE_SECRET;
+  } catch {}
+}
 
 function ensureCreds(){
   if (!API_KEY || !API_SECRET) {
-    throw new Error("BINANCE_KEY and BINANCE_SECRET env vars are required for signed requests");
+    throw new Error("BINANCE_KEY and BINANCE_SECRET are required (env or binance-keys.json)");
   }
 }
 
