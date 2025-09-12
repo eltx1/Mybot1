@@ -1,12 +1,28 @@
+import dotenv from "dotenv";
 import crypto from "crypto";
 import fetch from "node-fetch";
 
+dotenv.config();
+
 const BASE = process.env.BINANCE_BASE || "https://api.binance.com";
-const API_KEY = process.env.BINANCE_KEY;
-const API_SECRET = process.env.BINANCE_SECRET;
+
+function apiKey() {
+  return process.env.BINANCE_KEY;
+}
+
+function apiSecret() {
+  return process.env.BINANCE_SECRET;
+}
+
+function ensureCreds(){
+  if (!apiKey() || !apiSecret()) {
+    throw new Error("BINANCE_KEY and BINANCE_SECRET env vars are required for signed requests");
+  }
+}
 
 function sign(qs){
-  return crypto.createHmac("sha256", API_SECRET).update(qs).digest("hex");
+  ensureCreds();
+  return crypto.createHmac("sha256", apiSecret()).update(qs).digest("hex");
 }
 
 async function binance(path, method="GET", params={}, signed=false){
@@ -16,10 +32,13 @@ async function binance(path, method="GET", params={}, signed=false){
   }
   let url = `${BASE}${path}`;
   let body = undefined;
-  const headers = { "X-MBX-APIKEY": API_KEY };
+  const headers = {};
+  const key = apiKey();
+  if (key) headers["X-MBX-APIKEY"] = key;
 
   if (method === "GET"){
     if (signed){
+      ensureCreds();
       urlParams.set("timestamp", Date.now().toString());
       urlParams.set("recvWindow", "5000");
       const sig = sign(urlParams.toString());
@@ -30,6 +49,7 @@ async function binance(path, method="GET", params={}, signed=false){
     }
   } else {
     if (signed){
+      ensureCreds();
       urlParams.set("timestamp", Date.now().toString());
       urlParams.set("recvWindow", "5000");
       const sig = sign(urlParams.toString());

@@ -43,6 +43,14 @@
     </table>
   </div>
 
+  <div class="card">
+    <h3>Open orders</h3>
+    <table id="ordersTable">
+      <thead><tr><th>Symbol</th><th>Side</th><th>Price</th><th>Qty</th><th>Status</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
 <script>
 // Normalize decimals safely: convert "1,5" -> "1.5", trim spaces
 function toNumberSafe(v){
@@ -96,7 +104,27 @@ function render(){
   }
 }
 
+async function loadOrders(){
+  try{
+    const res = await fetch('/api/orders');
+    const arr = await res.json();
+    const tb = document.querySelector('#ordersTable tbody');
+    tb.innerHTML = '';
+    for(const {symbol, orders} of arr){
+      for(const o of orders){
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${symbol}</td><td>${o.side}</td><td>${o.price}</td><td>${o.origQty}</td><td>${o.status}</td>`;
+        tb.appendChild(tr);
+      }
+    }
+  }catch(e){
+    console.error('orders load failed', e);
+  }
+}
+
 load();
+loadOrders();
+setInterval(loadOrders, 5000);
 </script>
 </body>
 </html>
