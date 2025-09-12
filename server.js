@@ -1,13 +1,21 @@
-import express from "express";
-import dotenv from "dotenv";
-import fs from "fs";
-import path from "path";
+// --- ESM dirname + dotenv (must be first lines) ---
+import path, { dirname } from "path";
 import { fileURLToPath } from "url";
+import dotenv from "dotenv";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = dirname(__filename);
+
+// Load .env from the app directory explicitly
+dotenv.config({ path: path.join(__dirname, ".env") });
+// --- end bootstrap ---
+
+// (keep the rest of your imports and code below)
+import express from "express";
+import fs from "fs";
 import { runEngine } from "./strategy.js";
 import { openOrders } from "./binance.js";
 
-dotenv.config();
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json());
 
