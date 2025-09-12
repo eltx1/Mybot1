@@ -5,7 +5,14 @@ const BASE = process.env.BINANCE_BASE || "https://api.binance.com";
 const API_KEY = process.env.BINANCE_KEY;
 const API_SECRET = process.env.BINANCE_SECRET;
 
+function ensureCreds(){
+  if (!API_KEY || !API_SECRET) {
+    throw new Error("BINANCE_KEY and BINANCE_SECRET env vars are required for signed requests");
+  }
+}
+
 function sign(qs){
+  ensureCreds();
   return crypto.createHmac("sha256", API_SECRET).update(qs).digest("hex");
 }
 
@@ -16,10 +23,12 @@ async function binance(path, method="GET", params={}, signed=false){
   }
   let url = `${BASE}${path}`;
   let body = undefined;
-  const headers = { "X-MBX-APIKEY": API_KEY };
+  const headers = {};
+  if (API_KEY) headers["X-MBX-APIKEY"] = API_KEY;
 
   if (method === "GET"){
     if (signed){
+      ensureCreds();
       urlParams.set("timestamp", Date.now().toString());
       urlParams.set("recvWindow", "5000");
       const sig = sign(urlParams.toString());
@@ -30,6 +39,7 @@ async function binance(path, method="GET", params={}, signed=false){
     }
   } else {
     if (signed){
+      ensureCreds();
       urlParams.set("timestamp", Date.now().toString());
       urlParams.set("recvWindow", "5000");
       const sig = sign(urlParams.toString());
