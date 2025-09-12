@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "NODE_ENV=development node server.js"
+    "dev": "NODE_ENV=development node server.js",
+    "postinstall": "node -e \"const fs=require('fs');const p='./data';if(!fs.existsSync(p))fs.mkdirSync(p,{recursive:true});if(!fs.existsSync(p+'/rules.json'))fs.writeFileSync(p+'/rules.json','[]');\""
   },
   "dependencies": {
     "dotenv": "^16.4.5",
