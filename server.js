@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { runEngine } from "./strategy.js";
+import { openOrders } from "./binance.js";
 
 dotenv.config();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -78,6 +79,20 @@ res.json({ ok: true, rulesCount: readRules().length });
 } catch {
 res.status(500).json({ ok: false });
 }
+});
+
+app.get("/api/orders", async (req, res) => {
+  try {
+    const rules = readRules();
+    const data = [];
+    for (const r of rules) {
+      const orders = await openOrders(r.symbol);
+      data.push({ symbol: r.symbol, orders });
+    }
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.use("/", express.static(path.join(__dirname, "public")));
