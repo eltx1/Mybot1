@@ -41,6 +41,10 @@ cp .env.example .env
 # BINANCE_KEY=...
 # BINANCE_SECRET=...
 # ALLOWED_ORIGINS=https://my1.eltx.online
+#
+# If environment variables are inconvenient, copy binance-keys.example.json to
+# binance-keys.json and put the API key/secret there instead. The server will
+# use that file when BINANCE_KEY/BINANCE_SECRET are not set.
 
 npm install
 pm2 start server.js --name my1
@@ -62,6 +66,12 @@ Environment Variables (.env)
 BINANCE_KEY=YOUR_BINANCE_API_KEY
 BINANCE_SECRET=YOUR_BINANCE_SECRET
 BINANCE_BASE=https://api.binance.com
+
+# Or create binance-keys.json with:
+# {
+#   "BINANCE_KEY": "YOUR_BINANCE_API_KEY",
+#   "BINANCE_SECRET": "YOUR_BINANCE_SECRET"
+# }
 
 # App
 PORT=8080

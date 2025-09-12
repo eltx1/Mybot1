@@ -1,4 +1,5 @@
 .env
+binance-keys.json
 data/rules.json
 data/.log
 node_modules
