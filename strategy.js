@@ -57,11 +57,26 @@ async function getFilters(binance, symbol) {
   };
 }
 
-async function processRule({ binance, rule, caches, lastTradeId, userKey }) {
+async function processRule({ binance, rule, caches, lastTradeId, userId, userKey, callbacks = {} }) {
+  const onRuleError = typeof callbacks.onRuleError === "function" ? callbacks.onRuleError : null;
+  const onRuleOk = typeof callbacks.onRuleOk === "function" ? callbacks.onRuleOk : null;
+  let encounteredError = false;
+  const finish = () => {
+    if (!encounteredError && onRuleOk) {
+      onRuleOk({ userId, rule });
+    }
+  };
+  const fail = (err, phase) => {
+    encounteredError = true;
+    if (onRuleError) {
+      onRuleError({ userId, rule, error: err, phase });
+    }
+  };
+
   const symbol = (rule.symbol || "").toUpperCase();
-  if (!symbol) return;
+  if (!symbol) return finish();
   const enabled = rule.enabled !== false;
-  if (!enabled) return;
+  if (!enabled) return finish();
 
   const type = String(rule.type || "manual").toLowerCase() === "ai" ? "ai" : "manual";
   const ruleKey = `${userKey}:${rule.id || `${type}:${symbol}`}`;
@@ -71,11 +86,12 @@ async function processRule({ binance, rule, caches, lastTradeId, userKey }) {
       caches.filter[symbol] = await getFilters(binance, symbol);
     } catch (err) {
       console.error(`[ENGINE] filters error for ${symbol}:`, err.message);
+      fail(err, "filters");
       return;
     }
   }
   const filters = caches.filter[symbol];
-  if (!filters || !(filters.stepSize > 0) || !(filters.tickSize > 0)) return;
+  if (!filters || !(filters.stepSize > 0) || !(filters.tickSize > 0)) return finish();
 
   if (!caches.price[symbol]) {
     try {
@@ -83,29 +99,30 @@ async function processRule({ binance, rule, caches, lastTradeId, userKey }) {
       caches.price[symbol] = Number(price);
     } catch (err) {
       console.error(`[ENGINE] price error for ${symbol}:`, err.message);
+      fail(err, "price");
       return;
     }
   }
   const currentPrice = caches.price[symbol];
-  if (!(currentPrice > 0)) return;
+  if (!(currentPrice > 0)) return finish();
 
   const budget = Number(rule.budgetUSDT);
-  if (!(budget > 0)) return;
+  if (!(budget > 0)) return finish();
 
   let buyTarget = 0;
   let tpPct = Number(rule.tpPct);
   if (type === "manual") {
     const dipPct = Number(rule.dipPct);
-    if (!(dipPct > 0) || !(tpPct > 0)) return;
+    if (!(dipPct > 0) || !(tpPct > 0)) return finish();
     buyTarget = roundToTick(currentPrice * (1 - dipPct / 100), filters.tickSize);
   } else {
     buyTarget = roundToTick(Number(rule.entryPrice), filters.tickSize);
   }
-  if (!(buyTarget > 0)) return;
+  if (!(buyTarget > 0)) return finish();
 
   let qty = floorToStep(budget / buyTarget, filters.stepSize);
   if (qty < filters.minQty || (qty * buyTarget) < filters.minNotional) {
-    return;
+    return finish();
   }
 
   if (!caches.orders[symbol]) {
@@ -113,6 +130,7 @@ async function processRule({ binance, rule, caches, lastTradeId, userKey }) {
       caches.orders[symbol] = await binance.openOrders(symbol);
     } catch (err) {
       console.error(`[ENGINE] openOrders error for ${symbol}:`, err.message);
+      fail(err, "open-orders");
       return;
     }
   }
@@ -127,10 +145,12 @@ async function processRule({ binance, rule, caches, lastTradeId, userKey }) {
     try {
       await binance.placeLimit(symbol, "BUY", qty, buyTarget, { makerOnly: MAKER_ONLY, clientOrderId: buyId });
       caches.orders[symbol] = null;
+      return finish();
     } catch (err) {
       console.error(`[ENGINE] place BUY failed for ${symbol}:`, err.message);
+      fail(err, "place-buy");
+      return;
     }
-    return;
   }
 
   const drift = priceDriftPct(Number(buyOrder.price), buyTarget);
@@ -141,10 +161,12 @@ async function processRule({ binance, rule, caches, lastTradeId, userKey }) {
     try {
       await binance.placeLimit(symbol, "BUY", qty, buyTarget, { makerOnly: MAKER_ONLY, clientOrderId: buyId });
       caches.orders[symbol] = null;
+      return finish();
     } catch (err) {
       console.error(`[ENGINE] replace BUY failed for ${symbol}:`, err.message);
+      fail(err, "replace-buy");
+      return;
     }
-    return;
   }
 
   if (!caches.trades[symbol]) {
@@ -152,23 +174,24 @@ async function processRule({ binance, rule, caches, lastTradeId, userKey }) {
       caches.trades[symbol] = await binance.myTrades(symbol, 10);
     } catch (err) {
       console.error(`[ENGINE] trades error for ${symbol}:`, err.message);
+      fail(err, "trades");
       return;
     }
   }
   const trades = caches.trades[symbol];
-  if (!Array.isArray(trades) || !trades.length) return;
+  if (!Array.isArray(trades) || !trades.length) return finish();
 
   const recentBuy = [...trades].reverse().find(t => t.isBuyer);
-  if (!recentBuy) return;
-  if (recentBuy.id === lastTradeId.get(ruleKey)) return;
+  if (!recentBuy) return finish();
+  if (recentBuy.id === lastTradeId.get(ruleKey)) return finish();
 
   const filledPrice = Number(recentBuy.price);
-  if (!(filledPrice > 0)) return;
+  if (!(filledPrice > 0)) return finish();
   const fillDrift = priceDriftPct(filledPrice, buyTarget);
-  if (fillDrift > 1.5) return;
+  if (fillDrift > 1.5) return finish();
 
   const filledQty = floorToStep(Number(recentBuy.qty), filters.stepSize);
-  if (!(filledQty > 0)) return;
+  if (!(filledQty > 0)) return finish();
 
   lastTradeId.set(ruleKey, recentBuy.id);
 
@@ -178,20 +201,26 @@ async function processRule({ binance, rule, caches, lastTradeId, userKey }) {
   } else {
     sellPrice = roundToTick(Number(rule.exitPrice), filters.tickSize);
   }
-  if (!(sellPrice > 0)) return;
+  if (!(sellPrice > 0)) return finish();
 
   const sellOrder = pickOrderForRule(orders, rule, "SELL");
   if (!sellOrder) {
     try {
       await binance.placeLimit(symbol, "SELL", filledQty, sellPrice, { makerOnly: MAKER_ONLY, clientOrderId: sellId });
       caches.orders[symbol] = null;
+      finish();
+      return;
     } catch (err) {
       console.error(`[ENGINE] place SELL failed for ${symbol}:`, err.message);
+      fail(err, "place-sell");
+      return;
     }
   }
+
+  finish();
 }
 
-async function processSnapshot(snapshot, lastTradeId) {
+async function processSnapshot(snapshot, lastTradeId, callbacks) {
   const { userId, binance, rules } = snapshot;
   if (!binance || !Array.isArray(rules) || !rules.length) return;
 
@@ -205,15 +234,19 @@ async function processSnapshot(snapshot, lastTradeId) {
 
   for (const rule of rules) {
     try {
-      await processRule({ binance, rule: rule || {}, caches, lastTradeId, userKey });
+      await processRule({ binance, rule: rule || {}, caches, lastTradeId, userId, userKey, callbacks });
     } catch (err) {
       console.error(`[ENGINE] unexpected error for rule ${rule?.id || "unknown"}:`, err.message);
     }
   }
 }
 
-export function runEngine(getSnapshots) {
+export function runEngine(getSnapshots, hooks = {}) {
   const lastTradeId = new Map();
+  const callbacks = {
+    onRuleError: typeof hooks.onRuleError === "function" ? hooks.onRuleError : null,
+    onRuleOk: typeof hooks.onRuleOk === "function" ? hooks.onRuleOk : null
+  };
 
   async function loop() {
     while (true) {
@@ -221,7 +254,7 @@ export function runEngine(getSnapshots) {
         const snapshots = await getSnapshots();
         if (Array.isArray(snapshots)) {
           for (const snapshot of snapshots) {
-            await processSnapshot(snapshot || {}, lastTradeId);
+            await processSnapshot(snapshot || {}, lastTradeId, callbacks);
           }
         }
       } catch (err) {
