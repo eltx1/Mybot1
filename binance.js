@@ -74,7 +74,8 @@ export const account = () => binance(`/api/v3/account`, "GET", {}, true);
 export const openOrders = (symbol) => binance(`/api/v3/openOrders`, "GET", symbol?{ symbol }:{}, true);
 export const myTrades = (symbol, limit=20) => binance(`/api/v3/myTrades`, "GET", { symbol, limit }, true);
 
-export async function placeLimit(symbol, side, qty, price, makerOnly=false){
+export async function placeLimit(symbol, side, qty, price, options={}){
+  const { makerOnly=false, clientOrderId } = options;
   const payload = {
     symbol,
     side,
@@ -83,6 +84,7 @@ export async function placeLimit(symbol, side, qty, price, makerOnly=false){
     price
   };
   if (!makerOnly) payload.timeInForce = "GTC";
+  if (clientOrderId) payload.newClientOrderId = clientOrderId;
   return binance(`/api/v3/order`, "POST", payload, true);
 }
 
