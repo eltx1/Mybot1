@@ -1,128 +1,120 @@
 <!doctype html>
-<html lang="en" dir="ltr">
+<html lang="ar" dir="ltr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>my1 — Spot Engine Control</title>
+  <title>منصة MY1 للتداول الذكي</title>
   <style>
     :root {
       color-scheme: light;
-      --bg: #f3f4f6;
-      --card-bg: #ffffff;
+      --bg: linear-gradient(135deg, #0f172a, #1d4ed8);
+      --surface: rgba(255, 255, 255, 0.92);
+      --surface-strong: #ffffff;
       --text: #0f172a;
       --muted: #6b7280;
-      --border: rgba(148, 163, 184, 0.35);
       --accent: #2563eb;
-      --accent-dark: #1d4ed8;
-      --success: #15803d;
+      --accent-dark: #1e40af;
+      --accent-soft: rgba(37, 99, 235, 0.12);
+      --success: #16a34a;
       --danger: #dc2626;
+      --shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
     }
+
     * { box-sizing: border-box; }
+
     body {
-      font-family: "Inter", "Segoe UI", Roboto, Arial, sans-serif;
+      font-family: "Inter", "Cairo", "Segoe UI", sans-serif;
       margin: 0;
+      min-height: 100vh;
       background: var(--bg);
       color: var(--text);
-      padding: 28px clamp(16px, 4vw, 48px);
-      line-height: 1.5;
-    }
-    @media (max-width: 640px){
-      body { padding: 20px 16px; }
-    }
-    h1, h2, h3 { font-weight: 700; margin: 0 0 12px; }
-    p { margin: 0 0 12px; }
-    .page-header { margin-bottom: 24px; }
-    .page-header .muted { max-width: 640px; }
-
-    .status {
-      min-height: 24px;
-      font-weight: 600;
-      margin-bottom: 16px;
-      transition: opacity 0.2s ease;
-    }
-    .status.success { color: var(--success); }
-    .status.error { color: var(--danger); }
-    .status.info { color: var(--accent); }
-
-    .layout {
-      display: grid;
-      gap: 20px;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      margin-bottom: 20px;
-    }
-
-    .card {
-      background: var(--card-bg);
-      border-radius: 18px;
-      padding: 20px clamp(18px, 4vw, 26px);
-      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
-      border: 1px solid var(--border);
-    }
-    .card h2 { font-size: 1.2rem; }
-    .card h3 { font-size: 1.1rem; }
-    .card + .card { margin-top: 20px; }
-
-    .form-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 14px 18px;
-    }
-    label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.92rem; }
-    input, select {
-      width: 100%;
-      padding: 11px 12px;
-      border-radius: 10px;
-      border: 1px solid rgba(148, 163, 184, 0.6);
-      background: #f9fafb;
-      font-size: 0.95rem;
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
-    }
-    input:focus, select:focus {
-      outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
-      background: #fff;
-    }
-
-    .actions {
       display: flex;
-      gap: 10px;
+      flex-direction: column;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .site {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .hero {
+      padding: clamp(32px, 6vw, 72px) clamp(20px, 8vw, 120px);
+      color: #fff;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at top right, rgba(37, 99, 235, 0.45), transparent 50%),
+                  radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.38), transparent 50%);
+      pointer-events: none;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      gap: clamp(24px, 5vw, 60px);
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      align-items: center;
+    }
+
+    .hero h1 {
+      font-size: clamp(2.2rem, 5vw, 3.5rem);
+      margin: 0 0 16px;
+      line-height: 1.1;
+    }
+
+    .hero p {
+      margin: 0;
+      font-size: clamp(1rem, 2.2vw, 1.2rem);
+      color: rgba(255,255,255,0.85);
+      max-width: 520px;
+    }
+
+    .hero-actions {
+      margin-top: 24px;
+      display: flex;
       flex-wrap: wrap;
-      margin-top: 16px;
+      gap: 12px;
     }
 
     .btn {
       appearance: none;
       border: none;
-      border-radius: 10px;
-      padding: 11px 18px;
+      border-radius: 12px;
+      padding: 12px 20px;
       font-weight: 600;
-      font-size: 0.95rem;
+      font-size: 1rem;
       cursor: pointer;
-      transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
       display: inline-flex;
       align-items: center;
       gap: 8px;
     }
+
     .btn.primary {
-      background: var(--accent);
+      background: #fff;
+      color: var(--accent);
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.35);
+    }
+
+    .btn.primary:hover { transform: translateY(-2px); }
+
+    .btn.secondary {
+      background: rgba(255,255,255,0.16);
       color: #fff;
-      box-shadow: 0 12px 24px rgba(37, 99, 235, 0.25);
+      border: 1px solid rgba(255,255,255,0.25);
     }
-    .btn.primary:hover:not(:disabled) { background: var(--accent-dark); transform: translateY(-1px); }
-    .btn.accent {
-      background: linear-gradient(135deg, #0ea5e9, #2563eb);
-      color: #fff;
-      box-shadow: 0 12px 26px rgba(14, 165, 233, 0.25);
-    }
-    .btn.ghost {
-      background: rgba(15, 23, 42, 0.05);
-      color: var(--text);
-    }
-    .btn.danger {
-      background: rgba(220, 38, 38, 0.12);
-      color: var(--danger);
-    }
+
+    .btn.secondary:hover { background: rgba(255,255,255,0.25); }
+
     .btn-text {
       border: none;
       background: transparent;
@@ -132,13 +124,215 @@
       padding: 0;
       font-size: 0.9rem;
     }
+
     .btn-text.danger { color: var(--danger); }
-    .btn:disabled {
-      cursor: wait;
-      opacity: 0.65;
-      transform: none;
-      box-shadow: none;
+
+    .features {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 18px;
     }
+
+    .feature-card {
+      background: rgba(15, 23, 42, 0.55);
+      color: #fff;
+      padding: 18px 20px;
+      border-radius: 18px;
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.1);
+      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.35);
+    }
+
+    .feature-card h3 { margin: 0 0 10px; font-size: 1.1rem; }
+    .feature-card p { margin: 0; font-size: 0.95rem; color: rgba(255,255,255,0.82); }
+
+    .auth-section {
+      margin-top: -80px;
+      padding: 0 clamp(20px, 6vw, 120px) clamp(60px, 8vw, 120px);
+      display: flex;
+      justify-content: center;
+    }
+
+    .auth-card {
+      background: var(--surface);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      max-width: 960px;
+      width: 100%;
+      padding: clamp(24px, 4vw, 48px);
+      display: grid;
+      gap: 24px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+
+    .auth-copy h2 { margin: 0 0 12px; font-size: 1.6rem; }
+    .auth-copy p { margin: 0; color: var(--muted); line-height: 1.6; }
+
+    .auth-panel {
+      background: var(--surface-strong);
+      border-radius: 20px;
+      padding: 20px 24px;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .auth-tabs {
+      display: inline-flex;
+      background: rgba(15, 23, 42, 0.05);
+      border-radius: 12px;
+      padding: 4px;
+      margin-bottom: 12px;
+    }
+
+    .auth-tabs button {
+      border: none;
+      background: transparent;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--muted);
+      transition: background 0.2s ease, color 0.2s ease;
+    }
+
+    .auth-tabs button.is-active {
+      background: var(--surface);
+      color: var(--accent);
+      box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    label {
+      font-weight: 600;
+      font-size: 0.95rem;
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    input, textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(15, 23, 42, 0.12);
+      background: rgba(241, 245, 249, 0.7);
+      font-size: 0.95rem;
+      transition: border 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+      background: #fff;
+    }
+
+    .muted { color: var(--muted); }
+    .small { font-size: 0.85rem; }
+
+    .hidden { display: none !important; }
+
+    /* Dashboard */
+    #dashboard {
+      padding: clamp(32px, 5vw, 64px) clamp(20px, 7vw, 100px);
+      background: #f5f6fb;
+      min-height: 100vh;
+    }
+
+    .dashboard-header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    .dashboard-header h1 {
+      margin: 0 0 8px;
+      font-size: clamp(1.8rem, 4vw, 2.4rem);
+    }
+
+    .user-meta {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.8rem;
+      background: rgba(37, 99, 235, 0.12);
+      color: var(--accent);
+    }
+
+    .pill.success { background: rgba(22, 163, 74, 0.16); color: var(--success); }
+    .pill.danger { background: rgba(220, 38, 38, 0.16); color: var(--danger); }
+
+    .dashboard-grid {
+      display: grid;
+      gap: 24px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 20px 45px rgba(15, 23, 42, 0.12);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+    }
+
+    .card h2 { margin: 0 0 12px; font-size: 1.2rem; }
+    .card p { margin: 0 0 12px; color: var(--muted); }
+
+    .status {
+      min-height: 24px;
+      margin-bottom: 20px;
+      font-weight: 600;
+      transition: opacity 0.25s ease;
+    }
+
+    .status.success { color: var(--success); }
+    .status.error { color: var(--danger); }
+    .status.info { color: var(--accent); }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 14px;
+    }
+
+    .actions { display: flex; gap: 12px; flex-wrap: wrap; }
+
+    .btn.ghost {
+      background: rgba(15, 23, 42, 0.05);
+      color: var(--text);
+    }
+
+    .btn.danger {
+      background: rgba(220, 38, 38, 0.12);
+      color: var(--danger);
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
     .btn[data-loading="true"]::after {
       content: "";
       width: 16px;
@@ -148,73 +342,31 @@
       border-radius: 50%;
       animation: spin 0.75s linear infinite;
     }
+
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    .table-card { margin-top: 18px; }
-    .table-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 14px;
-      gap: 12px;
-    }
-    .table-header h3 { margin: 0; }
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 2px 10px;
-      border-radius: 999px;
-      font-size: 0.78rem;
-      font-weight: 600;
-      background: rgba(37, 99, 235, 0.12);
-      color: var(--accent);
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
     }
 
-    .table-wrapper { overflow-x: auto; }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 600px;
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
     }
-    th, td {
-      padding: 12px 14px;
-      border-bottom: 1px solid rgba(148, 163, 184, 0.2);
-      text-align: left;
-      vertical-align: top;
-      font-size: 0.92rem;
-    }
-    thead th {
-      font-size: 0.82rem;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: var(--muted);
-      background: rgba(15, 23, 42, 0.03);
-    }
-    tbody tr:last-child td { border-bottom: none; }
-    tbody tr.is-paused { opacity: 0.65; }
 
-    .symbol {
-      font-weight: 700;
-      letter-spacing: 0.02em;
-      font-size: 1rem;
-    }
-    .muted { color: var(--muted); font-size: 0.9rem; }
-    .muted.small { font-size: 0.78rem; }
-
-    .status-toggle { display: inline-flex; align-items: center; gap: 10px; }
-    .status-text.on { color: var(--success); font-weight: 600; }
-    .status-text.off { color: var(--muted); }
-
-    .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
-    .switch input { opacity: 0; width: 0; height: 0; }
     .slider {
       position: absolute;
       cursor: pointer;
       inset: 0;
-      background-color: rgba(15, 23, 42, 0.25);
+      background: rgba(15, 23, 42, 0.25);
       transition: background 0.2s ease;
       border-radius: 999px;
     }
+
     .slider::before {
       position: absolute;
       content: "";
@@ -222,24 +374,65 @@
       width: 18px;
       left: 3px;
       bottom: 3px;
-      background-color: #fff;
+      background: #fff;
       transition: transform 0.2s ease;
       border-radius: 50%;
       box-shadow: 0 2px 6px rgba(15, 23, 42, 0.25);
     }
-    .switch input:checked + .slider { background: linear-gradient(135deg, #22c55e, #16a34a); }
-    .switch input:checked + .slider::before { transform: translateX(20px); }
 
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      padding: 4px 10px;
-      border-radius: 999px;
-      font-size: 0.78rem;
-      font-weight: 600;
+    .switch input:checked + .slider {
+      background: linear-gradient(135deg, #22c55e, #16a34a);
     }
-    .pill.buy { background: rgba(34, 197, 94, 0.16); color: #166534; }
-    .pill.sell { background: rgba(239, 68, 68, 0.18); color: #b91c1c; }
+
+    .switch input:checked + .slider::before {
+      transform: translateX(20px);
+    }
+
+    .table-card { margin-bottom: 24px; }
+    .table-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .table-wrapper { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 640px;
+    }
+
+    th, td {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+      text-align: left;
+      font-size: 0.92rem;
+    }
+
+    thead th {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      background: rgba(15, 23, 42, 0.03);
+    }
+
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr.is-paused { opacity: 0.65; }
+
+    .symbol { font-weight: 700; letter-spacing: 0.02em; font-size: 1rem; }
+    details.ai-details summary {
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.85rem;
+      color: var(--accent);
+    }
+
+    details.ai-details {
+      margin-top: 6px;
+    }
 
     .ai-summary {
       background: rgba(15, 23, 42, 0.04);
@@ -249,17 +442,16 @@
       font-size: 0.85rem;
       white-space: pre-wrap;
     }
-    details.ai-details summary { cursor: pointer; font-weight: 600; font-size: 0.85rem; }
-    details.ai-details { margin-top: 8px; }
 
     .empty-row td {
-      padding: 24px 14px;
+      padding: 24px 16px;
       text-align: center;
       color: var(--muted);
       font-style: italic;
     }
 
-    @media (max-width: 780px) {
+    @media (max-width: 900px) {
+      .auth-section { margin-top: -40px; }
       table { min-width: 0; }
       table.data-table thead { display: none; }
       table.data-table tbody tr {
@@ -267,9 +459,7 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 12px;
         padding: 16px 0;
-        border-bottom: 1px solid rgba(148, 163, 184, 0.2);
       }
-      table.data-table tbody tr:last-child { border-bottom: none; }
       table.data-table td {
         border: none;
         padding: 0;
@@ -287,478 +477,791 @@
   </style>
 </head>
 <body>
-  <header class="page-header">
-    <h1>my1 — Spot Trading Engine</h1>
-    <p class="muted">Binance keys تبقى على الخادم. القواعد تحفظ محليًا في ملف JSON، ويمكن التحكم بها من هنا مع دعم للأجهزة المحمولة.</p>
-  </header>
-
-  <div id="status" class="status" role="status" aria-live="polite"></div>
-
-  <section class="layout">
-    <article class="card">
-      <h2>Manual rule (قاعدة يدوية)</h2>
-      <p class="muted">كوّن إستراتيجية شراء عند الهبوط وجني أرباح محدد.</p>
-      <div class="form-grid">
+  <div class="site">
+    <section class="hero" id="landing">
+      <div class="hero-content">
         <div>
-          <label for="symbol">Symbol</label>
-          <input id="symbol" placeholder="e.g., SOLUSDT">
-        </div>
-        <div>
-          <label for="dip">Buy on dip %</label>
-          <input id="dip" type="number" inputmode="decimal" placeholder="2">
-        </div>
-        <div>
-          <label for="tp">Take-profit %</label>
-          <input id="tp" type="number" inputmode="decimal" placeholder="2">
-        </div>
-        <div>
-          <label for="budget">Budget (USDT)</label>
-          <input id="budget" type="number" inputmode="decimal" placeholder="50">
-        </div>
-      </div>
-      <div class="actions">
-        <button class="btn primary" id="addRuleBtn">Add rule</button>
-        <button class="btn ghost" id="saveBtn">Sync with bot</button>
-      </div>
-    </article>
-
-    <article class="card">
-      <h2>AI role (قاعدة ذكاء اصطناعي)</h2>
-      <p class="muted">اضغط الزر ليقوم ChatGPT بتحليل السوق وبناء قاعدة تداول جاهزة.</p>
-      <div class="form-grid">
-        <div>
-          <label for="aiBudget">Budget (USDT)</label>
-          <input id="aiBudget" type="number" inputmode="decimal" value="100" min="10">
-        </div>
-        <div>
-          <label for="aiModel">Model</label>
-          <input id="aiModel" value="gpt-4o-mini" disabled>
-        </div>
-      </div>
-      <div class="actions">
-        <button class="btn accent" id="aiGenerate">Generate AI role</button>
-      </div>
-      <p class="muted small">يتم إرسال البرومبت المطلوب إلى ChatGPT وإضافة الرد مباشرةً كقاعدة AI.</p>
-    </article>
-  </section>
-
-  <section class="card table-card">
-    <div class="table-header">
-      <h3>Manual rules</h3>
-      <span class="badge" id="manualCount">0</span>
-    </div>
-    <div class="table-wrapper">
-      <table class="data-table" id="manualRulesTable">
-        <thead>
-          <tr><th>Rule</th><th>Targets</th><th>Budget</th><th>Status</th><th>Actions</th></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="card table-card">
-    <div class="table-header">
-      <h3>AI roles</h3>
-      <span class="badge" id="aiCount">0</span>
-    </div>
-    <div class="table-wrapper">
-      <table class="data-table" id="aiRulesTable">
-        <thead>
-          <tr><th>Role</th><th>Entry</th><th>Target</th><th>Budget</th><th>Status</th><th>Actions</th></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="card table-card">
-    <div class="table-header">
-      <h3>Open orders</h3>
-      <div class="actions" style="margin-top:0">
-        <button class="btn ghost" id="refreshOrders">Refresh</button>
-      </div>
-    </div>
-    <div class="table-wrapper">
-      <table class="data-table" id="ordersTable">
-        <thead>
-          <tr><th>Symbol</th><th>Side</th><th>Price</th><th>Quantity</th><th>Type</th><th>Status</th><th>Last update</th></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
-
-<script>
-(function(){
-  const statusEl = document.getElementById('status');
-  const manualTableBody = document.querySelector('#manualRulesTable tbody');
-  const aiTableBody = document.querySelector('#aiRulesTable tbody');
-  const ordersTableBody = document.querySelector('#ordersTable tbody');
-  const manualCountEl = document.getElementById('manualCount');
-  const aiCountEl = document.getElementById('aiCount');
-  const refreshOrdersBtn = document.getElementById('refreshOrders');
-  let rules = [];
-  let ordersTimer = null;
-  let statusTimer = null;
-  let isOrdersLoading = false;
-
-  function setStatus(message, type='info'){
-    if (!statusEl) return;
-    statusEl.textContent = message || '';
-    statusEl.className = `status ${type || ''}`.trim();
-    clearTimeout(statusTimer);
-    if (message){
-      statusTimer = setTimeout(()=>{
-        statusEl.textContent = '';
-        statusEl.className = 'status';
-      }, 6000);
-    }
-  }
-
-  function toNumberSafe(v){
-    if (typeof v !== 'string') v = String(v ?? '');
-    v = v.replace(/\s+/g, '').replace(/,/g, '.');
-    const num = Number(v);
-    return Number.isFinite(num) ? num : NaN;
-  }
-
-  function formatNumber(value){
-    const num = Number(value);
-    if (!Number.isFinite(num)) return '-';
-    const abs = Math.abs(num);
-    const opts = { maximumFractionDigits: 8 };
-    if (abs >= 1000) opts.maximumFractionDigits = 2;
-    else if (abs >= 100) opts.maximumFractionDigits = 2;
-    else if (abs >= 1) opts.maximumFractionDigits = 4;
-    return num.toLocaleString(undefined, opts);
-  }
-
-  function formatCurrency(v){
-    const num = Number(v);
-    if (!Number.isFinite(num)) return '-';
-    return `${formatNumber(num)} USDT`;
-  }
-
-  function formatPercent(v){
-    const num = Number(v);
-    if (!Number.isFinite(num)) return '-';
-    return `${num.toFixed(2)}%`;
-  }
-
-  function formatDate(ms){
-    if (!ms) return '-';
-    const d = new Date(ms);
-    if (Number.isNaN(d.getTime())) return '-';
-    return d.toLocaleString();
-  }
-
-  function escapeHtml(str){
-    return String(str || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
-  }
-
-  function extractRules(payload){
-    if (Array.isArray(payload)) return payload;
-    if (payload && Array.isArray(payload.rules)) return payload.rules;
-    return [];
-  }
-
-  function render(){
-    renderManualRules();
-    renderAiRules();
-  }
-
-  function renderManualRules(){
-    const manual = rules.filter(r => (r.type || 'manual').toLowerCase() !== 'ai');
-    manualCountEl.textContent = manual.length;
-    manualTableBody.innerHTML = '';
-    if (!manual.length){
-      const tr = document.createElement('tr');
-      tr.className = 'empty-row';
-      tr.innerHTML = '<td colspan="5">No manual rules yet.</td>';
-      manualTableBody.appendChild(tr);
-      return;
-    }
-    for (const rule of manual){
-      const tr = document.createElement('tr');
-      if (!rule.enabled) tr.classList.add('is-paused');
-      tr.dataset.id = rule.id;
-      tr.innerHTML = `
-        <td data-label="Rule">
-          <div class="symbol">${escapeHtml(rule.symbol)}</div>
-          <div class="muted small">Created ${formatDate(rule.createdAt)}</div>
-        </td>
-        <td data-label="Targets">
-          <div>Buy dip: <strong>${formatPercent(rule.dipPct)}</strong></div>
-          <div class="muted small">Take profit: ${formatPercent(rule.tpPct)}</div>
-        </td>
-        <td data-label="Budget">${formatCurrency(rule.budgetUSDT)}</td>
-        <td data-label="Status">
-          <div class="status-toggle">
-            <label class="switch">
-              <input type="checkbox" data-action="toggle" data-id="${rule.id}" ${rule.enabled ? 'checked' : ''}>
-              <span class="slider"></span>
-            </label>
-            <span class="status-text ${rule.enabled ? 'on' : 'off'}">${rule.enabled ? 'Enabled' : 'Paused'}</span>
+          <h1>حوّل البوت إلى منصة تداول متكاملة</h1>
+          <p>
+            منصة MY1 تمنحك لوحة تحكم احترافية لإدارة أوامر التداول الذكية، إنشاء قواعد يدوية أو بواسطة الذكاء الاصطناعي، وربط حساب بينانس الخاص بك بأمان.
+          </p>
+          <div class="hero-actions">
+            <button class="btn primary" data-scroll-to-auth>ابدأ الآن</button>
+            <button class="btn secondary" data-scroll-to-auth>تسجيل الدخول أو إنشاء حساب</button>
           </div>
-        </td>
-        <td data-label="Actions">
-          <button class="btn-text danger" data-action="delete" data-id="${rule.id}">Delete</button>
-        </td>
-      `;
-      manualTableBody.appendChild(tr);
-    }
-  }
+        </div>
+        <div class="features">
+          <article class="feature-card">
+            <h3>إدارة مستخدمين</h3>
+            <p>تسجيل، تسجيل دخول، وحفظ بياناتك في قاعدة بيانات MySQL آمنة.</p>
+          </article>
+          <article class="feature-card">
+            <h3>ربط Binance</h3>
+            <p>خزن مفاتيح API لكل مستخدم وشغّل البوت باستراتيجية منفصلة لكل حساب.</p>
+          </article>
+          <article class="feature-card">
+            <h3>ذكاء اصطناعي</h3>
+            <p>ولّد قواعد تداول لحظية عبر GPT، تُحفظ تلقائيًا وتعمل مع المحرك.</p>
+          </article>
+          <article class="feature-card">
+            <h3>تصميم عصري</h3>
+            <p>لوحة تحكم حديثة، سريعة الاستجابة، تدعم العربية والأجهزة المحمولة.</p>
+          </article>
+        </div>
+      </div>
+    </section>
 
-  function renderAiRules(){
-    const aiRules = rules.filter(r => (r.type || '').toLowerCase() === 'ai');
-    aiCountEl.textContent = aiRules.length;
-    aiTableBody.innerHTML = '';
-    if (!aiRules.length){
-      const tr = document.createElement('tr');
-      tr.className = 'empty-row';
-      tr.innerHTML = '<td colspan="6">No AI roles generated yet.</td>';
-      aiTableBody.appendChild(tr);
-      return;
-    }
-    for (const rule of aiRules){
-      const tr = document.createElement('tr');
-      if (!rule.enabled) tr.classList.add('is-paused');
-      tr.dataset.id = rule.id;
-      const summary = rule.aiSummary ? `<details class="ai-details"><summary>AI notes</summary><div class="ai-summary">${escapeHtml(rule.aiSummary)}</div></details>` : '';
-      tr.innerHTML = `
-        <td data-label="Role">
-          <div class="symbol">${escapeHtml(rule.symbol)}</div>
-          <div class="muted small">Model: ${escapeHtml(rule.aiModel || 'ChatGPT')}</div>
-          ${summary}
-        </td>
-        <td data-label="Entry">${formatNumber(rule.entryPrice)}</td>
-        <td data-label="Target">${formatNumber(rule.exitPrice)}</td>
-        <td data-label="Budget">${formatCurrency(rule.budgetUSDT)}</td>
-        <td data-label="Status">
-          <div class="status-toggle">
-            <label class="switch">
-              <input type="checkbox" data-action="toggle" data-id="${rule.id}" ${rule.enabled ? 'checked' : ''}>
-              <span class="slider"></span>
-            </label>
-            <span class="status-text ${rule.enabled ? 'on' : 'off'}">${rule.enabled ? 'Enabled' : 'Paused'}</span>
+    <section class="auth-section" id="authSection">
+      <div class="auth-card">
+        <div class="auth-copy">
+          <h2>سجّل دخولك لإدارة البوت</h2>
+          <p>
+            كل مستخدم يمتلك بياناته الخاصة، مفاتيح Binance، وقواعده المخزنة في قاعدة البيانات. بعد التسجيل يمكنك التحكم الكامل في المنصة ومتابعة الأوامر المفتوحة.
+          </p>
+        </div>
+        <div class="auth-panel">
+          <div class="auth-tabs">
+            <button type="button" class="is-active" data-auth-tab="login">تسجيل الدخول</button>
+            <button type="button" data-auth-tab="register">إنشاء حساب</button>
           </div>
-        </td>
-        <td data-label="Actions">
-          <button class="btn-text danger" data-action="delete" data-id="${rule.id}">Delete</button>
-        </td>
-      `;
-      aiTableBody.appendChild(tr);
-    }
-  }
+          <form id="loginForm" data-auth-panel="login">
+            <div>
+              <label for="loginEmail">البريد الإلكتروني</label>
+              <input id="loginEmail" type="email" autocomplete="email" required>
+            </div>
+            <div>
+              <label for="loginPassword">كلمة المرور</label>
+              <input id="loginPassword" type="password" autocomplete="current-password" required>
+            </div>
+            <button class="btn primary" type="submit">دخول</button>
+          </form>
+          <form id="registerForm" data-auth-panel="register" class="hidden">
+            <div>
+              <label for="registerName">الاسم الكامل</label>
+              <input id="registerName" required>
+            </div>
+            <div>
+              <label for="registerEmail">البريد الإلكتروني</label>
+              <input id="registerEmail" type="email" autocomplete="email" required>
+            </div>
+            <div>
+              <label for="registerPassword">كلمة المرور</label>
+              <input id="registerPassword" type="password" autocomplete="new-password" required>
+            </div>
+            <button class="btn primary" type="submit">إنشاء الحساب</button>
+          </form>
+        </div>
+      </div>
+    </section>
 
-  async function persistAll(nextRules, { message, type='success', silent=false } = {}){
-    try {
-      const res = await fetch('/api/rules', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(nextRules)
-      });
-      const data = await res.json().catch(()=>({}));
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to save rules');
-      }
-      rules = extractRules(data);
-      render();
-      if (!silent && message) setStatus(message, type);
-      await loadOrders(true);
-    } catch (err) {
-      console.error(err);
-      setStatus(err.message || 'Failed to sync with server', 'error');
-      throw err;
-    }
-  }
+    <main id="dashboard" class="hidden">
+      <div class="dashboard-header">
+        <div>
+          <h1>لوحة تحكم منصة MY1</h1>
+          <p class="muted">إدارة القواعد، متابعة الأوامر، وربط واجهة Binance لكل مستخدم من مكان واحد.</p>
+        </div>
+        <div class="user-meta">
+          <span class="pill" id="welcomeName">مرحبا</span>
+          <button class="btn ghost" id="logoutBtn">تسجيل الخروج</button>
+        </div>
+      </div>
 
-  async function loadRules(){
-    try {
-      const res = await fetch('/api/rules');
-      const data = await res.json();
-      rules = extractRules(data);
-      render();
-    } catch (err) {
-      console.error('Failed to load rules', err);
-      setStatus('Failed to load rules', 'error');
-    }
-  }
+      <div id="status" class="status" role="status" aria-live="polite"></div>
 
-  async function loadOrders(silent=false){
-    if (isOrdersLoading) return;
-    isOrdersLoading = true;
-    if (!silent){
-      ordersTableBody.innerHTML = '<tr class="empty-row"><td colspan="7">Loading orders...</td></tr>';
-    }
-    try {
-      const res = await fetch('/api/orders');
-      const data = await res.json();
-      renderOrders(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error('orders load failed', err);
-      ordersTableBody.innerHTML = '<tr class="empty-row"><td colspan="7">Unable to load orders</td></tr>';
-      setStatus('Could not fetch open orders', 'error');
-    } finally {
-      isOrdersLoading = false;
-    }
-  }
+      <section class="dashboard-grid">
+        <article class="card">
+          <h2>ربط مفاتيح Binance</h2>
+          <p>أدخل مفاتيح API الخاصة بك (Spot) ليعمل البوت على حسابك. يتم حفظها مشفرة داخل قاعدة البيانات.</p>
+          <div>الحالة: <span id="apiKeysStatus" class="pill danger">غير متصل</span></div>
+          <form id="apiKeysForm">
+            <div>
+              <label for="apiKey">API Key</label>
+              <input id="apiKey" autocomplete="off" placeholder="XXXXXXXX" required>
+            </div>
+            <div>
+              <label for="apiSecret">API Secret</label>
+              <input id="apiSecret" autocomplete="off" placeholder="XXXXXXXX" required>
+            </div>
+            <div class="actions">
+              <button class="btn primary" type="submit">حفظ المفاتيح</button>
+              <button class="btn ghost" type="button" id="removeKeys">إزالة الربط</button>
+            </div>
+            <p class="muted small">استخدم مفاتيح تداول Spot مع صلاحيات القراءة والتداول فقط.</p>
+          </form>
+        </article>
 
-  function renderOrders(list){
-    ordersTableBody.innerHTML = '';
-    let hasRows = false;
-    for (const { symbol, orders } of list){
-      if (!orders || !orders.length) continue;
-      for (const order of orders){
-        hasRows = true;
-        const filled = Number(order.executedQty);
-        const original = Number(order.origQty);
-        const filledPct = original > 0 ? ((filled / original) * 100) : 0;
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td data-label="Symbol">
-            <div class="symbol">${escapeHtml(symbol)}</div>
-            ${order.clientOrderId ? `<div class="muted small">${escapeHtml(order.clientOrderId)}</div>` : ''}
-          </td>
-          <td data-label="Side"><span class="pill ${order.side === 'SELL' ? 'sell' : 'buy'}">${escapeHtml(order.side)}</span></td>
-          <td data-label="Price">${formatNumber(order.price)}</td>
-          <td data-label="Quantity">
-            <div>${formatNumber(order.origQty)}</div>
-            <div class="muted small">${formatNumber(order.executedQty)} filled (${filledPct.toFixed(1)}%)</div>
-          </td>
-          <td data-label="Type">${escapeHtml(order.type || '')}</td>
-          <td data-label="Status">${escapeHtml(order.status || '')}</td>
-          <td data-label="Last update">${formatDate(order.updateTime || order.time)}</td>
-        `;
-        ordersTableBody.appendChild(tr);
-      }
-    }
-    if (!hasRows){
-      const tr = document.createElement('tr');
-      tr.className = 'empty-row';
-      tr.innerHTML = '<td colspan="7">No open orders at the moment.</td>';
-      ordersTableBody.appendChild(tr);
-    }
-  }
+        <article class="card">
+          <h2>قاعدة يدوية</h2>
+          <p>كوّن إستراتيجية شراء عند الهبوط وجني أرباح محدد.</p>
+          <form id="manualForm">
+            <div class="form-row">
+              <div>
+                <label for="symbol">الزوج</label>
+                <input id="symbol" placeholder="مثال: SOLUSDT" required>
+              </div>
+              <div>
+                <label for="dip">نسبة الشراء عند الهبوط %</label>
+                <input id="dip" type="number" step="0.01" min="0" placeholder="2" required>
+              </div>
+            </div>
+            <div class="form-row">
+              <div>
+                <label for="tp">نسبة جني الربح %</label>
+                <input id="tp" type="number" step="0.01" min="0" placeholder="2" required>
+              </div>
+              <div>
+                <label for="budget">ميزانية الصفقة (USDT)</label>
+                <input id="budget" type="number" step="0.01" min="0" placeholder="50" required>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="btn primary" type="submit">إضافة القاعدة</button>
+              <button class="btn ghost" type="button" id="syncRules">مزامنة مع المحرك</button>
+            </div>
+          </form>
+        </article>
 
-  async function addRule(){
-    const symbol = (document.getElementById('symbol').value || '').trim().toUpperCase();
-    const dipPct = toNumberSafe(document.getElementById('dip').value);
-    const tpPct = toNumberSafe(document.getElementById('tp').value);
-    const budget = toNumberSafe(document.getElementById('budget').value);
+        <article class="card">
+          <h2>قاعدة بالذكاء الاصطناعي</h2>
+          <p>اضغط الزر ليقوم ChatGPT بتحليل السوق وبناء قاعدة تداول جاهزة.</p>
+          <form id="aiForm">
+            <div>
+              <label for="aiBudget">ميزانية AI (USDT)</label>
+              <input id="aiBudget" type="number" min="10" value="100" required>
+            </div>
+            <div>
+              <label for="aiModel">النموذج</label>
+              <input id="aiModel" value="gpt-4o-mini" disabled>
+            </div>
+            <button class="btn primary" id="aiGenerate" type="submit">توليد قاعدة بالذكاء الاصطناعي</button>
+            <p class="muted small">يتم إرسال البرومبت المطلوب إلى ChatGPT وإضافة الرد مباشرةً كقاعدة AI.</p>
+          </form>
+        </article>
+      </section>
 
-    if (!symbol) { setStatus('Symbol is required', 'error'); return; }
-    if (!(dipPct > 0)) { setStatus('Dip % must be a positive number', 'error'); return; }
-    if (!(tpPct > 0)) { setStatus('Take-profit % must be a positive number', 'error'); return; }
-    if (!(budget > 0)) { setStatus('Budget must be a positive number', 'error'); return; }
+      <section class="card table-card">
+        <div class="table-header">
+          <h2>القواعد اليدوية</h2>
+          <span class="pill" id="manualCount">0</span>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table" id="manualRulesTable">
+            <thead>
+              <tr>
+                <th>القاعدة</th>
+                <th>الأهداف</th>
+                <th>الميزانية</th>
+                <th>الحالة</th>
+                <th>إجراءات</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
 
-    const newRule = {
-      symbol,
-      dipPct,
-      tpPct,
-      budgetUSDT: budget,
-      enabled: true,
-      type: 'manual',
-      createdAt: Date.now()
+      <section class="card table-card">
+        <div class="table-header">
+          <h2>قواعد الذكاء الاصطناعي</h2>
+          <span class="pill" id="aiCount">0</span>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table" id="aiRulesTable">
+            <thead>
+              <tr>
+                <th>القاعدة</th>
+                <th>سعر الدخول</th>
+                <th>هدف الربح</th>
+                <th>الميزانية</th>
+                <th>الحالة</th>
+                <th>إجراءات</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card table-card">
+        <div class="table-header">
+          <h2>الأوامر المفتوحة</h2>
+          <div class="actions">
+            <button class="btn ghost" id="refreshOrders">تحديث</button>
+          </div>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table" id="ordersTable">
+            <thead>
+              <tr>
+                <th>الزوج</th>
+                <th>الاتجاه</th>
+                <th>السعر</th>
+                <th>الكمية</th>
+                <th>النوع</th>
+                <th>الحالة</th>
+                <th>آخر تحديث</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+  (function(){
+    const state = {
+      token: localStorage.getItem('mybot_token') || '',
+      user: null,
+      rules: [],
+      ordersTimer: null,
+      statusTimer: null,
+      hasKeys: false,
+      isOrdersLoading: false
     };
 
-    try {
-      await persistAll([...rules, newRule], { message: `Manual rule added for ${symbol}`, type: 'success' });
-      document.getElementById('symbol').value = '';
-      document.getElementById('dip').value = '';
-      document.getElementById('tp').value = '';
-      document.getElementById('budget').value = '';
-    } catch {}
-  }
+    const landing = document.getElementById('landing');
+    const authSection = document.getElementById('authSection');
+    const dashboard = document.getElementById('dashboard');
+    const statusEl = document.getElementById('status');
+    const loginForm = document.getElementById('loginForm');
+    const registerForm = document.getElementById('registerForm');
+    const authTabs = document.querySelectorAll('[data-auth-tab]');
+    const welcomeName = document.getElementById('welcomeName');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const apiKeysStatus = document.getElementById('apiKeysStatus');
+    const apiKeysForm = document.getElementById('apiKeysForm');
+    const removeKeysBtn = document.getElementById('removeKeys');
+    const manualForm = document.getElementById('manualForm');
+    const syncRulesBtn = document.getElementById('syncRules');
+    const aiForm = document.getElementById('aiForm');
+    const aiGenerateBtn = document.getElementById('aiGenerate');
+    const manualTableBody = document.querySelector('#manualRulesTable tbody');
+    const aiTableBody = document.querySelector('#aiRulesTable tbody');
+    const ordersTableBody = document.querySelector('#ordersTable tbody');
+    const manualCountEl = document.getElementById('manualCount');
+    const aiCountEl = document.getElementById('aiCount');
+    const refreshOrdersBtn = document.getElementById('refreshOrders');
 
-  async function toggleRule(id, enabled){
-    const next = rules.map(r => r.id === id ? { ...r, enabled } : r);
-    try {
-      await persistAll(next, { message: enabled ? 'Rule enabled' : 'Rule paused', type: 'info', silent: false });
-    } catch {}
-  }
+    function setStatus(message, type = 'info') {
+      if (!statusEl) return;
+      statusEl.textContent = message || '';
+      statusEl.className = `status ${message ? type : ''}`.trim();
+      clearTimeout(state.statusTimer);
+      if (message) {
+        state.statusTimer = setTimeout(() => {
+          statusEl.textContent = '';
+          statusEl.className = 'status';
+        }, 6000);
+      }
+    }
 
-  async function deleteRule(id){
-    if (!id) return;
-    if (!confirm('Delete this rule?')) return;
-    const next = rules.filter(r => r.id !== id);
-    try {
-      await persistAll(next, { message: 'Rule removed', type: 'info' });
-    } catch {}
-  }
+    function setToken(token) {
+      state.token = token || '';
+      if (state.token) {
+        localStorage.setItem('mybot_token', state.token);
+      } else {
+        localStorage.removeItem('mybot_token');
+      }
+    }
 
-  async function syncRules(){
-    try {
-      await persistAll(rules, { message: 'Rules synced with engine', type: 'success' });
-    } catch {}
-  }
+    function showDashboard() {
+      landing.classList.add('hidden');
+      authSection.classList.add('hidden');
+      dashboard.classList.remove('hidden');
+    }
 
-  async function generateAiRole(){
-    const btn = document.getElementById('aiGenerate');
-    if (!btn || btn.dataset.loading === 'true') return;
-    const budget = toNumberSafe(document.getElementById('aiBudget').value);
-    if (!(budget > 0)) { setStatus('Enter a valid budget for AI role', 'error'); return; }
-    btn.dataset.loading = 'true';
-    btn.disabled = true;
-    try {
-      const res = await fetch('/api/ai-role', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ budgetUSDT: budget })
-      });
-      const data = await res.json().catch(()=>({}));
+    function showLanding() {
+      landing.classList.remove('hidden');
+      authSection.classList.remove('hidden');
+      dashboard.classList.add('hidden');
+    }
+
+    async function api(path, options = {}) {
+      const opts = { ...options };
+      opts.headers = { ...(options.headers || {}) };
+      if (opts.body && typeof opts.body === 'object' && !(opts.body instanceof FormData)) {
+        opts.headers['Content-Type'] = opts.headers['Content-Type'] || 'application/json';
+        if (opts.headers['Content-Type'].includes('application/json')) {
+          opts.body = JSON.stringify(opts.body);
+        }
+      }
+      if (state.token) {
+        opts.headers['Authorization'] = `Bearer ${state.token}`;
+      }
+      const res = await fetch(path, opts);
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        handleLogout();
+        throw new Error('يرجى تسجيل الدخول مرة أخرى');
+      }
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to generate AI role');
+        throw new Error(data.error || 'تعذر تنفيذ الطلب');
       }
-      await loadRules();
-      if (data && data.rule && data.rule.aiModel){
-        const modelInput = document.getElementById('aiModel');
-        if (modelInput) modelInput.value = data.rule.aiModel;
+      return data;
+    }
+
+    function extractRules(payload) {
+      if (Array.isArray(payload)) return payload;
+      if (payload && Array.isArray(payload.rules)) return payload.rules;
+      return [];
+    }
+
+    function renderTables() {
+      renderManualRules();
+      renderAiRules();
+    }
+
+    function renderManualRules() {
+      const manual = state.rules.filter(r => (r.type || 'manual').toLowerCase() !== 'ai');
+      manualCountEl.textContent = manual.length;
+      manualTableBody.innerHTML = '';
+      if (!manual.length) {
+        const tr = document.createElement('tr');
+        tr.className = 'empty-row';
+        tr.innerHTML = '<td colspan="5">لا توجد قواعد يدوية بعد.</td>';
+        manualTableBody.appendChild(tr);
+        return;
       }
-      const newSymbol = data && data.rule && data.rule.symbol ? data.rule.symbol : 'symbol';
-      setStatus(`AI role created for ${newSymbol}`, 'success');
-      await loadOrders(true);
-    } catch (err) {
-      console.error('AI role error', err);
-      setStatus(err.message || 'Failed to generate AI role', 'error');
-    } finally {
-      btn.disabled = false;
-      delete btn.dataset.loading;
+      for (const rule of manual) {
+        const tr = document.createElement('tr');
+        if (!rule.enabled) tr.classList.add('is-paused');
+        tr.dataset.id = rule.id;
+        tr.innerHTML = `
+          <td data-label="القاعدة">
+            <div class="symbol">${escapeHtml(rule.symbol)}</div>
+            <div class="muted small">إنشاء ${formatDate(rule.createdAt)}</div>
+          </td>
+          <td data-label="الأهداف">
+            <div>شراء عند الهبوط: <strong>${formatPercent(rule.dipPct)}</strong></div>
+            <div class="muted small">جني ربح: ${formatPercent(rule.tpPct)}</div>
+          </td>
+          <td data-label="الميزانية">${formatCurrency(rule.budgetUSDT)}</td>
+          <td data-label="الحالة">
+            <label class="switch">
+              <input type="checkbox" data-action="toggle" data-id="${rule.id}" ${rule.enabled ? 'checked' : ''}>
+              <span class="slider"></span>
+            </label>
+          </td>
+          <td data-label="إجراءات">
+            <button class="btn-text danger" data-action="delete" data-id="${rule.id}">حذف</button>
+          </td>
+        `;
+        manualTableBody.appendChild(tr);
+      }
     }
-  }
 
-  document.getElementById('addRuleBtn').addEventListener('click', addRule);
-  document.getElementById('saveBtn').addEventListener('click', syncRules);
-  document.getElementById('aiGenerate').addEventListener('click', generateAiRole);
-  refreshOrdersBtn.addEventListener('click', () => loadOrders());
-
-  document.body.addEventListener('change', (event) => {
-    const target = event.target;
-    if (target && target.dataset && target.dataset.action === 'toggle'){
-      const id = target.dataset.id;
-      const enabled = target.checked;
-      toggleRule(id, enabled);
+    function renderAiRules() {
+      const aiRules = state.rules.filter(r => (r.type || '').toLowerCase() === 'ai');
+      aiCountEl.textContent = aiRules.length;
+      aiTableBody.innerHTML = '';
+      if (!aiRules.length) {
+        const tr = document.createElement('tr');
+        tr.className = 'empty-row';
+        tr.innerHTML = '<td colspan="6">لا توجد قواعد ذكاء اصطناعي بعد.</td>';
+        aiTableBody.appendChild(tr);
+        return;
+      }
+      for (const rule of aiRules) {
+        const tr = document.createElement('tr');
+        if (!rule.enabled) tr.classList.add('is-paused');
+        tr.dataset.id = rule.id;
+        tr.innerHTML = `
+          <td data-label="القاعدة">
+            <div class="symbol">${escapeHtml(rule.symbol)}</div>
+            <details class="ai-details">
+              <summary>عرض ملخص الذكاء الاصطناعي</summary>
+              <div class="ai-summary">${escapeHtml(rule.aiSummary || '')}</div>
+            </details>
+          </td>
+          <td data-label="دخول">${formatNumber(rule.entryPrice)}</td>
+          <td data-label="هدف">${formatNumber(rule.exitPrice)}</td>
+          <td data-label="الميزانية">${formatCurrency(rule.budgetUSDT)}</td>
+          <td data-label="الحالة">
+            <label class="switch">
+              <input type="checkbox" data-action="toggle" data-id="${rule.id}" ${rule.enabled ? 'checked' : ''}>
+              <span class="slider"></span>
+            </label>
+          </td>
+          <td data-label="إجراءات">
+            <button class="btn-text danger" data-action="delete" data-id="${rule.id}">حذف</button>
+          </td>
+        `;
+        aiTableBody.appendChild(tr);
+      }
     }
-  });
 
-  document.body.addEventListener('click', (event) => {
-    const btn = event.target.closest('[data-action="delete"]');
-    if (btn){
-      const id = btn.dataset.id;
-      deleteRule(id);
+    function renderOrders(rows) {
+      ordersTableBody.innerHTML = '';
+      if (!rows || !rows.length) {
+        const tr = document.createElement('tr');
+        tr.className = 'empty-row';
+        tr.innerHTML = '<td colspan="7">لا توجد أوامر مفتوحة حالياً.</td>';
+        ordersTableBody.appendChild(tr);
+        return;
+      }
+      for (const item of rows) {
+        if (item.error) {
+          const tr = document.createElement('tr');
+          tr.className = 'empty-row';
+          tr.innerHTML = `<td colspan="7">${escapeHtml(item.symbol)}: ${escapeHtml(item.error)}</td>`;
+          ordersTableBody.appendChild(tr);
+          continue;
+        }
+        for (const order of item.orders || []) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td data-label="الزوج">${escapeHtml(order.symbol)}</td>
+            <td data-label="الاتجاه"><span class="pill ${order.side === 'BUY' ? 'success' : 'danger'}">${order.side}</span></td>
+            <td data-label="السعر">${formatNumber(order.price)}</td>
+            <td data-label="الكمية">${formatNumber(order.origQty)}</td>
+            <td data-label="النوع">${escapeHtml(order.type)}</td>
+            <td data-label="الحالة">${escapeHtml(order.status)}</td>
+            <td data-label="آخر تحديث">${formatDate(order.updateTime || order.time)}</td>
+          `;
+          ordersTableBody.appendChild(tr);
+        }
+      }
     }
-  });
 
-  async function init(){
-    await loadRules();
-    await loadOrders();
-    if (ordersTimer) clearInterval(ordersTimer);
-    ordersTimer = setInterval(() => loadOrders(true), 7000);
-  }
+    function escapeHtml(str) {
+      return String(str || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+    }
 
-  init();
-})();
-</script>
+    function formatNumber(value) {
+      const num = Number(value);
+      if (!Number.isFinite(num)) return '-';
+      const abs = Math.abs(num);
+      const opts = { maximumFractionDigits: 8 };
+      if (abs >= 1000) opts.maximumFractionDigits = 2;
+      else if (abs >= 100) opts.maximumFractionDigits = 2;
+      else if (abs >= 1) opts.maximumFractionDigits = 4;
+      return num.toLocaleString(undefined, opts);
+    }
+
+    function formatCurrency(v) {
+      const num = Number(v);
+      if (!Number.isFinite(num)) return '-';
+      return `${formatNumber(num)} USDT`;
+    }
+
+    function formatPercent(v) {
+      const num = Number(v);
+      if (!Number.isFinite(num)) return '-';
+      return `${num.toFixed(2)}%`;
+    }
+
+    function formatDate(ms) {
+      if (!ms) return '-';
+      const d = new Date(Number(ms));
+      if (Number.isNaN(d.getTime())) return '-';
+      return d.toLocaleString();
+    }
+
+    async function handleLogin(event) {
+      event.preventDefault();
+      const payload = {
+        email: document.getElementById('loginEmail').value,
+        password: document.getElementById('loginPassword').value
+      };
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'فشل تسجيل الدخول');
+        setToken(data.token);
+        state.user = data.user;
+        await bootstrapDashboard();
+        setStatus('تم تسجيل الدخول بنجاح', 'success');
+      } catch (err) {
+        console.error('login error', err);
+        setStatus(err.message, 'error');
+      }
+    }
+
+    async function handleRegister(event) {
+      event.preventDefault();
+      const payload = {
+        name: document.getElementById('registerName').value,
+        email: document.getElementById('registerEmail').value,
+        password: document.getElementById('registerPassword').value
+      };
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'فشل إنشاء الحساب');
+        setToken(data.token);
+        state.user = data.user;
+        await bootstrapDashboard();
+        setStatus('تم إنشاء الحساب بنجاح', 'success');
+      } catch (err) {
+        console.error('register error', err);
+        setStatus(err.message, 'error');
+      }
+    }
+
+    async function bootstrapDashboard() {
+      try {
+        await fetchCurrentUser();
+        showDashboard();
+        await loadRules();
+        await loadOrders();
+        await refreshApiKeysStatus();
+        if (state.ordersTimer) clearInterval(state.ordersTimer);
+        state.ordersTimer = setInterval(() => loadOrders(true), 8000);
+      } catch (err) {
+        console.error('bootstrap error', err);
+        setStatus(err.message, 'error');
+      }
+    }
+
+    async function fetchCurrentUser() {
+      const data = await api('/api/auth/me');
+      state.user = data.user;
+      state.hasKeys = Boolean(data.hasApiKeys);
+      welcomeName.textContent = state.user?.name ? `مرحباً ${state.user.name}` : 'مرحباً';
+      updateApiKeysStatus();
+    }
+
+    async function loadRules() {
+      const data = await api('/api/rules');
+      state.rules = extractRules(data);
+      renderTables();
+    }
+
+    async function persistAll(rules, message) {
+      const response = await api('/api/rules', { method: 'POST', body: rules });
+      state.rules = extractRules(response);
+      renderTables();
+      if (message) setStatus(message.text, message.type || 'success');
+    }
+
+    async function loadOrders(silent) {
+      if (state.isOrdersLoading) return;
+      state.isOrdersLoading = true;
+      try {
+        const data = await api('/api/orders');
+        renderOrders(Array.isArray(data) ? data : []);
+        if (!silent) setStatus('تم تحديث الأوامر المفتوحة', 'info');
+      } catch (err) {
+        renderOrders([]);
+        setStatus(err.message, 'error');
+      } finally {
+        state.isOrdersLoading = false;
+      }
+    }
+
+    async function refreshApiKeysStatus() {
+      try {
+        const data = await api('/api/users/api-keys');
+        state.hasKeys = Boolean(data.hasKeys);
+      } catch (err) {
+        state.hasKeys = false;
+        console.error('api key status error', err);
+      }
+      updateApiKeysStatus();
+    }
+
+    function updateApiKeysStatus() {
+      if (!apiKeysStatus) return;
+      apiKeysStatus.textContent = state.hasKeys ? 'متصل' : 'غير متصل';
+      apiKeysStatus.className = `pill ${state.hasKeys ? 'success' : 'danger'}`;
+    }
+
+    async function submitApiKeys(event) {
+      event.preventDefault();
+      const payload = {
+        apiKey: document.getElementById('apiKey').value,
+        apiSecret: document.getElementById('apiSecret').value
+      };
+      try {
+        await api('/api/users/api-keys', { method: 'POST', body: payload });
+        state.hasKeys = true;
+        updateApiKeysStatus();
+        setStatus('تم حفظ مفاتيح Binance بنجاح', 'success');
+        apiKeysForm.reset();
+      } catch (err) {
+        console.error('api keys error', err);
+        setStatus(err.message, 'error');
+      }
+    }
+
+    async function removeApiKeys() {
+      if (!confirm('هل أنت متأكد من إزالة الربط؟')) return;
+      try {
+        await api('/api/users/api-keys', { method: 'DELETE' });
+        state.hasKeys = false;
+        updateApiKeysStatus();
+        setStatus('تمت إزالة مفاتيح Binance', 'info');
+      } catch (err) {
+        setStatus(err.message, 'error');
+      }
+    }
+
+    async function addManualRule(event) {
+      event.preventDefault();
+      const symbol = document.getElementById('symbol').value.trim().toUpperCase();
+      const dip = Number(document.getElementById('dip').value);
+      const tp = Number(document.getElementById('tp').value);
+      const budget = Number(document.getElementById('budget').value);
+      if (!symbol) return setStatus('يجب إدخال الزوج', 'error');
+      if (!(dip > 0)) return setStatus('أدخل نسبة هبوط صحيحة', 'error');
+      if (!(tp > 0)) return setStatus('أدخل نسبة جني ربح صحيحة', 'error');
+      if (!(budget > 0)) return setStatus('أدخل ميزانية صحيحة', 'error');
+      const newRule = {
+        symbol,
+        dipPct: dip,
+        tpPct: tp,
+        budgetUSDT: budget,
+        enabled: true,
+        type: 'manual',
+        createdAt: Date.now()
+      };
+      try {
+        await persistAll([...state.rules, newRule], { text: `تمت إضافة قاعدة ${symbol}`, type: 'success' });
+        manualForm.reset();
+      } catch (err) {
+        setStatus(err.message, 'error');
+      }
+    }
+
+    async function syncRules() {
+      try {
+        await persistAll(state.rules, { text: 'تمت مزامنة القواعد مع المحرك', type: 'success' });
+      } catch (err) {
+        setStatus(err.message, 'error');
+      }
+    }
+
+    async function toggleRule(id, enabled) {
+      const next = state.rules.map(r => r.id === id ? { ...r, enabled } : r);
+      try {
+        await persistAll(next, { text: enabled ? 'تم تفعيل القاعدة' : 'تم إيقاف القاعدة', type: 'info' });
+      } catch (err) {
+        setStatus(err.message, 'error');
+      }
+    }
+
+    async function deleteRule(id) {
+      if (!id) return;
+      if (!confirm('حذف هذه القاعدة؟')) return;
+      try {
+        const data = await api(`/api/rules/${id}`, { method: 'DELETE' });
+        state.rules = extractRules(data);
+        renderTables();
+        setStatus('تم حذف القاعدة', 'info');
+      } catch (err) {
+        setStatus(err.message, 'error');
+      }
+    }
+
+    async function generateAiRule(event) {
+      event.preventDefault();
+      if (aiGenerateBtn.dataset.loading === 'true') return;
+      const budget = Number(document.getElementById('aiBudget').value);
+      if (!(budget > 0)) return setStatus('أدخل ميزانية صحيحة للذكاء الاصطناعي', 'error');
+      aiGenerateBtn.dataset.loading = 'true';
+      aiGenerateBtn.disabled = true;
+      try {
+        const data = await api('/api/ai-role', {
+          method: 'POST',
+          body: { budgetUSDT: budget }
+        });
+        await loadRules();
+        if (data && data.rule && data.rule.aiModel) {
+          const modelInput = document.getElementById('aiModel');
+          if (modelInput) modelInput.value = data.rule.aiModel;
+        }
+        setStatus('تم توليد قاعدة ذكاء اصطناعي بنجاح', 'success');
+        await loadOrders(true);
+      } catch (err) {
+        console.error('ai error', err);
+        setStatus(err.message, 'error');
+      } finally {
+        aiGenerateBtn.disabled = false;
+        delete aiGenerateBtn.dataset.loading;
+      }
+    }
+
+    function handleLogout() {
+      setToken('');
+      state.user = null;
+      state.rules = [];
+      state.hasKeys = false;
+      if (state.ordersTimer) clearInterval(state.ordersTimer);
+      renderTables();
+      renderOrders([]);
+      showLanding();
+    }
+
+    function initAuthTabs() {
+      authTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          authTabs.forEach(btn => btn.classList.toggle('is-active', btn === tab));
+          const target = tab.getAttribute('data-auth-tab');
+          document.querySelectorAll('[data-auth-panel]').forEach(panel => {
+            panel.classList.toggle('hidden', panel.getAttribute('data-auth-panel') !== target);
+          });
+        });
+      });
+    }
+
+    document.body.addEventListener('change', event => {
+      const target = event.target;
+      if (target && target.dataset && target.dataset.action === 'toggle') {
+        toggleRule(target.dataset.id, target.checked);
+      }
+    });
+
+    document.body.addEventListener('click', event => {
+      const btn = event.target.closest('[data-action="delete"]');
+      if (btn) {
+        deleteRule(btn.dataset.id);
+      }
+    });
+
+    document.querySelectorAll('[data-scroll-to-auth]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        window.scrollTo({ top: authSection.offsetTop - 40, behavior: 'smooth' });
+      });
+    });
+
+    loginForm.addEventListener('submit', handleLogin);
+    registerForm.addEventListener('submit', handleRegister);
+    logoutBtn.addEventListener('click', handleLogout);
+    apiKeysForm.addEventListener('submit', submitApiKeys);
+    removeKeysBtn.addEventListener('click', removeApiKeys);
+    manualForm.addEventListener('submit', addManualRule);
+    syncRulesBtn.addEventListener('click', syncRules);
+    aiForm.addEventListener('submit', generateAiRule);
+    refreshOrdersBtn.addEventListener('click', () => loadOrders());
+
+    initAuthTabs();
+
+    async function init() {
+      renderTables();
+      renderOrders([]);
+      if (state.token) {
+        try {
+          await bootstrapDashboard();
+        } catch (err) {
+          console.error('init error', err);
+          setStatus(err.message, 'error');
+          handleLogout();
+        }
+      }
+    }
+
+    init();
+  })();
+  </script>
 </body>
 </html>
