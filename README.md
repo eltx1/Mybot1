@@ -1,161 +1,97 @@
-my1 — Binance Spot Dip-Buy / Take-Profit Engine
+# MY1 Bot Platform
 
-Single-user, lightweight engine that places limit buy orders on dips and limit sell take-profits automatically.
-Server keeps your Binance API keys safe; rules are stored in a local JSON file (no DB required).
+منصة تداول متكاملة مبنية على Node.js تحول البوت السابق إلى نظام متعدد المستخدمين مع قاعدة بيانات MySQL، واجهة هبوط عصرية، وإدارة كاملة للقواعد والأوامر.
 
-Use at your own risk. Start with tiny budgets. Enable Binance API IP whitelist. Grant Read + Spot Trade only.
+## أهم المزايا
 
-⸻
+- **نظام حسابات**: تسجيل مستخدمين، تسجيل دخول JWT، وتخزين كلمات المرور مشفرة بـ bcrypt.
+- **ربط Binance لكل مستخدم**: حفظ مفاتيح API الخاصة بكل مستخدم بشكل مشفر داخل قاعدة البيانات.
+- **قواعد تداول في MySQL**: بدلاً من ملفات JSON يتم حفظ القواعد في جدول rules مع إمكانية التفعيل، الإيقاف والحذف.
+- **مولد قواعد بالذكاء الاصطناعي**: استدعاء ChatGPT لإنشاء قواعد تداول يتم حفظها وتفعيلها مباشرة.
+- **محرك تداول متعدد المستخدمين**: حلقة تنفيذ تقرأ قواعد كل مستخدم وتتعامل مع حساب Binance الخاص به.
+- **واجهة أمامية حديثة**: صفحة هبوط متجاوبة تعرض المزايا وبطاقات التسجيل، ولوحة تحكم كاملة بعد الدخول.
 
-Features
-	•	Add simple rules per symbol: buy on dip %, take-profit %, budget (USDT).
-	•	Places/refreshes LIMIT / LIMIT_MAKER orders (maker-only optional to minimize fees).
-	•	Auto TP: on a filled BUY, engine places a SELL at filledPrice × (1 + tp%).
-	•	Respects tickSize, stepSize, minNotional from exchange info.
-	•	Pure JSON storage (data/rules.json) — easy to start, no database ops.
-	•	CORS allow-list (subdomain only), keys in .env, no secrets in frontend.
+## المتطلبات
 
-my1-app/
-  package.json
-  .env.example
-  server.js          # Express server + API + engine bootstrap
-  binance.js         # Signed REST helpers (HMAC)
-  strategy.js        # Dip-buy/TP logic (polling loop)
-  public/
-    index.html       # Minimal UI to manage rules (English)
-  data/
-    rules.json       # Rules storage (JSON, single user)
+- Node.js 18 أو أحدث.
+- قاعدة بيانات MySQL 8 (أو MariaDB متوافقة).
+- حساب Binance مع صلاحيات Spot Trade + Read فقط (مُفضل تفعيل IP whitelist).
 
-    Requirements
-	•	Node.js 18+
-	•	PM2 (recommended for persistent run): npm i -g pm2
-	•	A VPS/cPanel where you can run Node
-	•	Binance API key with Read + Spot Trade only, IP whitelisted
+## الإعداد السريع
 
-
-Quick Start (Server)
+```bash
 git clone https://github.com/<YOUR_USERNAME>/my1-app.git
 cd my1-app
 cp .env.example .env
-# edit .env with your keys and domain:
-# BINANCE_KEY=...
-# BINANCE_SECRET=...
-# ALLOWED_ORIGINS=https://my1.eltx.online
-#
-# If environment variables are inconvenient, copy binance-keys.example.json to
-# binance-keys.json and put the API key/secret there instead. The server will
-# use that file when BINANCE_KEY/BINANCE_SECRET are not set.
-
 npm install
+```
+
+قم بتعديل ملف `.env` بما يناسب بيئتك (راجع متغيرات البيئة بالأسفل)، ثم شغل الخادم:
+
+```bash
+npm start
+```
+
+> **ملاحظة**: تأكد من إنشاء قاعدة البيانات المحددة في `DB_NAME` قبل تشغيل الخادم (مثلاً `CREATE DATABASE mybot CHARACTER SET utf8mb4;`).
+
+## متغيرات البيئة الأساسية
+
+| المتغير | الوصف |
+|---------|-------|
+| `PORT` | منفذ الخادم (افتراضي 8080). |
+| `DB_HOST` | عنوان خادم MySQL (افتراضي `localhost`). |
+| `DB_PORT` | منفذ MySQL (افتراضي `3306`). |
+| `DB_USER` | اسم مستخدم قاعدة البيانات. |
+| `DB_PASSWORD` | كلمة مرور قاعدة البيانات. |
+| `DB_NAME` | اسم قاعدة البيانات التي تحتوي على الجداول. |
+| `JWT_SECRET` | سر توقيع رموز الدخول (يجب تغييره في البيئة الإنتاجية). |
+| `CREDENTIALS_SECRET` | مفتاح تشفير مفاتيح Binance (إذا لم يحدد يتم استخدام `JWT_SECRET`). |
+| `ALLOWED_ORIGINS` | قائمة عناوين مسموح بها للـ CORS مفصولة بفواصل. |
+| `OPENAI_API_KEY` | مفتاح واجهة OpenAI لتوليد قواعد الذكاء الاصطناعي. |
+| `OPENAI_MODEL` | اسم نموذج OpenAI الافتراضي (افتراضي `gpt-4o-mini`). |
+| `BINANCE_BASE` | عنوان واجهة Binance (افتراضي `https://api.binance.com`). |
+| `MAKER_ONLY` | هل يتم استخدام أوامر LIMIT_MAKER بشكل افتراضي (افتراضي `true`). |
+
+## بنية قاعدة البيانات
+
+يتم إنشاء الجداول تلقائياً عند تشغيل الخادم:
+
+- `users`: تخزين بيانات المستخدمين وكلمات المرور المشفرة.
+- `user_api_keys`: تخزين مفاتيح Binance لكل مستخدم بعد تشفيرها باستخدام AES-256-GCM.
+- `rules`: حفظ القواعد اليدوية وقواعد الذكاء الاصطناعي مع حالة التفعيل والميزانية.
+
+## الواجهة الأمامية
+
+- صفحة هبوط تعرف بالمنصة مع بطاقات المزايا.
+- نموذج موحد لتسجيل الدخول أو إنشاء حساب جديد.
+- لوحة تحكم بعد الدخول تتضمن:
+  - حفظ/إزالة مفاتيح Binance.
+  - إنشاء قواعد يدوية.
+  - توليد قواعد عبر الذكاء الاصطناعي.
+  - جداول للقواعد اليدوية، قواعد الذكاء الاصطناعي، والأوامر المفتوحة.
+
+## المحرك الخلفي
+
+ملف `strategy.js` يقوم بتشغيل حلقة لكل مستخدم يمتلك مفاتيح مفعلة، ويطبق نفس منطق الشراء عند الهبوط/جني الأرباح مع احترام فلاتر Binance. يتم إنشاء عميل Binance منفصل لكل مستخدم باستخدام مفاتيحه الخاصة.
+
+## نصائح أمنية
+
+- استخدم مفاتيح Binance بصلاحيات القراءة والتداول فقط مع تفعيل IP whitelist.
+- احرص على تغيير `JWT_SECRET` و `CREDENTIALS_SECRET` في بيئة الإنتاج.
+- لا تقم بمشاركة ملف `.env` أو مفاتيحك داخل المستودع.
+- راقب سجلات الخادم لأي أخطاء أو محاولات وصول غير مصرح بها.
+
+## تشغيل في الإنتاج
+
+يوصى باستخدام مدير عمليات مثل [PM2](https://pm2.keymetrics.io/):
+
+```bash
 pm2 start server.js --name my1
 pm2 save
+```
 
-Reverse Proxy (Apache, Subdomain)
+مع إعداد Proxy عكسي (Apache/Nginx) لتوجيه الطلبات إلى المنفذ الداخلي.
 
-Create subdomain my1.eltx.online (Document Root e.g. public_html/my1) and put .htaccess:
-RewriteEngine On
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteRule ^(.*)$ http://127.0.0.1:8080/$1 [P,L]
+## رخصة
 
-ProxyPreserveHost On
-RequestHeader set X-Forwarded-Proto "https"
-
-
-Environment Variables (.env)
-# Binance
-BINANCE_KEY=YOUR_BINANCE_API_KEY
-BINANCE_SECRET=YOUR_BINANCE_SECRET
-BINANCE_BASE=https://api.binance.com
-
-# Or create binance-keys.json with:
-# {
-#   "BINANCE_KEY": "YOUR_BINANCE_API_KEY",
-#   "BINANCE_SECRET": "YOUR_BINANCE_SECRET"
-# }
-
-# App
-PORT=8080
-ALLOWED_ORIGINS=https://my1.eltx.online
-MAKER_ONLY=true                  # true = use LIMIT_MAKER
-MAX_SYMBOL_ALLOCATION_USDT=200   # safety cap per symbol
-
-
-Frontend (Rules UI)
-
-Open https://my1.eltx.online and add rules:
-	•	Symbol: e.g., SOLUSDT
-	•	Buy on dip %: e.g., 2
-	•	Take-profit %: e.g., 2
-	•	Budget (USDT): e.g., 50
-
-Click Save & run.
-Rules are saved to data/rules.json. Engine polls every ~5s.
-
-⸻
-
-How It Works
-
-For each rule:
-	1.	Fetch current avg price (/api/v3/avgPrice).
-	2.	Compute buy target: price × (1 − dipPct%), rounded to tick.
-	3.	Compute quantity from budget and respect stepSize/minNotional.
-	4.	If no open BUY, place LIMIT (or LIMIT_MAKER).
-	5.	If an open BUY drifts > 0.3% from target, cancel & replace.
-	6.	Detect BUY fills via recent myTrades and place SELL TP at filled × (1 + tp%).
-
-⸻
-
-API (internal)
-	•	GET /api/rules → returns current rules array.
-	•	POST /api/rules → body: array of rules
- [
-  { "symbol":"SOLUSDT", "dipPct":2, "tpPct":2, "budgetUSDT":50, "enabled":true }
-]
-
-
-Engine starts automatically with the current rules when server.js boots.
-
-# First time
-pm2 start server.js --name my1 && pm2 save
-
-# Subsequent updates
-git pull
-pm2 restart my1
-
-Security Checklist
-	•	✅ API keys not exposed to frontend.
-	•	✅ Use Read + Spot Trade only; no withdrawals.
-	•	✅ IP whitelist your server in Binance.
-	•	✅ Keep repo private; never commit .env.
-	•	✅ Start with very small budgets per rule.
-
-⸻
-
-Known Limits / Notes
-	•	Single-user, single-process. JSON storage suitable for personal use.
-For multi-user or audit logs, migrate to SQLite/MySQL.
-	•	Fill detection uses latest trades; for partial fills, engine places TP per last fill size (simple heuristic).
-	•	Network errors are retried on the next loop; see server logs for details.
-
-⸻
-
-Roadmap (suggested next steps)
-	•	Break-even + fixed target (auto add fee-aware TP).
-	•	Cooldown per symbol after fill.
-	•	Telegram alerts (fill / error / restart).
-	•	Persistent trade logs (SQLite) & simple dashboard.
-	•	Optional stop-loss per rule.
-
-⸻
-
-Troubleshooting
-	•	Nothing happens: check pm2 logs my1. Ensure ALLOWED_ORIGINS matches your domain.
-	•	Orders rejected: symbol filters (tick/step/minNotional) may block too-small budgets. Increase budget or choose another symbol.
-	•	403/401: wrong API key/secret or missing IP whitelist.
-	•	Frontend blocked: CORS — add your exact origin to ALLOWED_ORIGINS.
-
-⸻
-
-License
-
-Private, personal use. Do not distribute without permission.
+الاستخدام شخصي وخاص. لا يسمح بإعادة النشر أو التوزيع دون إذن مسبق.

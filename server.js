@@ -6,61 +6,185 @@ import dotenv from "dotenv";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
 
-// Load .env from the app directory explicitly
 dotenv.config({ path: path.join(__dirname, ".env") });
 // --- end bootstrap ---
 
-// (keep the rest of your imports and code below)
 import express from "express";
-import fs from "fs";
+import mysql from "mysql2/promise";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 import fetch from "node-fetch";
-import { randomUUID } from "crypto";
+import {
+  randomUUID,
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes
+} from "crypto";
 import { runEngine } from "./strategy.js";
-import { openOrders } from "./binance.js";
+import { createBinanceClient } from "./binance.js";
 
 const app = express();
 app.use(express.json());
 
-const allowList = (process.env.ALLOWED_ORIGINS || "").split(",").map(s=>s.trim()).filter(Boolean);
-app.use((req,res,next)=>{
-const origin = req.headers.origin || "";
-if (allowList.includes(origin)) {
-res.setHeader("Access-Control-Allow-Origin", origin);
-res.setHeader("Vary", "Origin");
-res.setHeader("Access-Control-Allow-Credentials", "true");
-res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
-}
-if (req.method === "OPTIONS") return res.sendStatus(200);
-next();
+const allowList = (process.env.ALLOWED_ORIGINS || "").split(",").map(s => s.trim()).filter(Boolean);
+app.use((req, res, next) => {
+  const origin = req.headers.origin || "";
+  if (allowList.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  }
+  if (req.method === "OPTIONS") return res.sendStatus(200);
+  next();
 });
 
-const dataDir = path.join(__dirname, "data");
-const rulesPath = path.join(dataDir, "rules.json");
+const dbConfig = {
+  host: process.env.DB_HOST || "localhost",
+  user: process.env.DB_USER || "root",
+  password: process.env.DB_PASSWORD || "",
+  database: process.env.DB_NAME || "mybot",
+  port: Number(process.env.DB_PORT || 3306),
+  waitForConnections: true,
+  connectionLimit: Number(process.env.DB_POOL_LIMIT || 10)
+};
+
+const pool = mysql.createPool(dbConfig);
+
+const JWT_SECRET = process.env.JWT_SECRET || process.env.SECRET_KEY || "change-this-secret";
+const CREDENTIALS_SECRET = process.env.CREDENTIALS_SECRET || JWT_SECRET;
+const ENC_ALGO = "aes-256-gcm";
+
 const DEFAULT_AI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const DEFAULT_AI_BUDGET = (() => {
   const raw = Number(process.env.DEFAULT_AI_BUDGET);
   return Number.isFinite(raw) && raw > 0 ? raw : 100;
 })();
 
-function ensureDataFiles() {
-try {
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-if (!fs.existsSync(rulesPath)) fs.writeFileSync(rulesPath, "[]\n", { encoding: "utf8" });
-} catch (e) {
-console.error("ensureDataFiles error:", e.message);
+function encryptionKey() {
+  if (!CREDENTIALS_SECRET) {
+    throw new Error("CREDENTIALS_SECRET is required to store Binance credentials");
+  }
+  return createHash("sha256").update(String(CREDENTIALS_SECRET)).digest();
 }
-}
-ensureDataFiles();
 
-function safeReadJSON(file, fallback) {
-try {
-const raw = fs.readFileSync(file, "utf8");
-return JSON.parse(raw || "[]");
-} catch (e) {
-console.warn("safeReadJSON fallback:", e.message);
-return fallback;
+function encryptSecret(value) {
+  if (!value) return null;
+  const key = encryptionKey();
+  const iv = randomBytes(16);
+  const cipher = createCipheriv(ENC_ALGO, key, iv);
+  const encrypted = Buffer.concat([cipher.update(String(value), "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([iv, tag, encrypted]).toString("base64");
 }
+
+function decryptSecret(payload) {
+  if (!payload) return null;
+  try {
+    const key = encryptionKey();
+    const buffer = Buffer.from(payload, "base64");
+    const iv = buffer.subarray(0, 16);
+    const tag = buffer.subarray(16, 32);
+    const data = buffer.subarray(32);
+    const decipher = createDecipheriv(ENC_ALGO, key, iv);
+    decipher.setAuthTag(tag);
+    const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
+    return decrypted.toString("utf8");
+  } catch (err) {
+    console.error("Failed to decrypt Binance credential", err.message);
+    return null;
+  }
+}
+
+async function initDb() {
+  const conn = await pool.getConnection();
+  try {
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        email VARCHAR(191) NOT NULL UNIQUE,
+        password_hash VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS user_api_keys (
+        user_id INT PRIMARY KEY,
+        api_key VARCHAR(512) NOT NULL,
+        api_secret VARCHAR(512) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        CONSTRAINT fk_user_keys FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS rules (
+        id VARCHAR(64) PRIMARY KEY,
+        user_id INT NOT NULL,
+        type VARCHAR(16) NOT NULL,
+        symbol VARCHAR(32) NOT NULL,
+        dip_pct DECIMAL(18,8) DEFAULT NULL,
+        tp_pct DECIMAL(18,8) DEFAULT NULL,
+        entry_price DECIMAL(18,8) DEFAULT NULL,
+        exit_price DECIMAL(18,8) DEFAULT NULL,
+        budget_usdt DECIMAL(18,8) NOT NULL DEFAULT 0,
+        enabled TINYINT(1) NOT NULL DEFAULT 1,
+        ai_summary TEXT,
+        ai_model VARCHAR(100),
+        created_at BIGINT NOT NULL,
+        INDEX idx_rules_user (user_id),
+        CONSTRAINT fk_rules_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+  } finally {
+    conn.release();
+  }
+}
+
+async function findUserByEmail(email) {
+  if (!email) return null;
+  const [rows] = await pool.query("SELECT id, name, email, password_hash FROM users WHERE email = ? LIMIT 1", [email]);
+  return rows[0] || null;
+}
+
+async function findUserById(id) {
+  if (!id) return null;
+  const [rows] = await pool.query("SELECT id, name, email FROM users WHERE id = ? LIMIT 1", [id]);
+  return rows[0] || null;
+}
+
+async function hasApiKeys(userId) {
+  const [rows] = await pool.query("SELECT 1 FROM user_api_keys WHERE user_id = ? LIMIT 1", [userId]);
+  return rows.length > 0;
+}
+
+async function getUserApiKeys(userId) {
+  const [rows] = await pool.query("SELECT api_key, api_secret FROM user_api_keys WHERE user_id = ? LIMIT 1", [userId]);
+  if (!rows.length) return null;
+  const apiKey = decryptSecret(rows[0].api_key);
+  const apiSecret = decryptSecret(rows[0].api_secret);
+  if (!apiKey || !apiSecret) return null;
+  return { apiKey, apiSecret };
+}
+
+async function upsertUserApiKeys(userId, apiKey, apiSecret) {
+  const encKey = encryptSecret(apiKey);
+  const encSecret = encryptSecret(apiSecret);
+  await pool.query(
+    `INSERT INTO user_api_keys (user_id, api_key, api_secret)
+     VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE api_key = VALUES(api_key), api_secret = VALUES(api_secret)`,
+    [userId, encKey, encSecret]
+  );
+}
+
+async function deleteUserApiKeys(userId) {
+  await pool.query("DELETE FROM user_api_keys WHERE user_id = ?", [userId]);
 }
 
 function normalizeRules(input) {
@@ -129,6 +253,8 @@ function normalizeRules(input) {
         if (rule.tpPct !== 0) mutated = true;
         rule.tpPct = 0;
       }
+      rule.entryPrice = 0;
+      rule.exitPrice = 0;
     } else {
       const entry = Number(rule.entryPrice);
       if (Number.isFinite(entry)) {
@@ -158,72 +284,257 @@ function normalizeRules(input) {
   return { rules: normalized, mutated };
 }
 
-function readRules() {
-  ensureDataFiles();
-  const raw = safeReadJSON(rulesPath, []);
-  const { rules, mutated } = normalizeRules(raw);
-  if (mutated) {
-    writeRules(rules);
-    return rules;
-  }
-  return rules;
+function mapRuleRow(row) {
+  return {
+    id: row.id,
+    type: row.type,
+    symbol: row.symbol,
+    dipPct: row.dip_pct !== null ? Number(row.dip_pct) : 0,
+    tpPct: row.tp_pct !== null ? Number(row.tp_pct) : 0,
+    entryPrice: row.entry_price !== null ? Number(row.entry_price) : 0,
+    exitPrice: row.exit_price !== null ? Number(row.exit_price) : 0,
+    budgetUSDT: row.budget_usdt !== null ? Number(row.budget_usdt) : 0,
+    enabled: row.enabled === 1 || row.enabled === true,
+    aiSummary: row.ai_summary || undefined,
+    aiModel: row.ai_model || undefined,
+    createdAt: Number(row.created_at) || Date.now()
+  };
 }
 
-function writeRules(r) {
+async function readRules(userId) {
+  const [rows] = await pool.query("SELECT * FROM rules WHERE user_id = ? ORDER BY created_at ASC", [userId]);
+  return rows.map(mapRuleRow);
+}
+
+async function writeRules(userId, rules) {
+  const connection = await pool.getConnection();
   try {
-    const { rules } = normalizeRules(r);
-    ensureDataFiles();
-    const tmp = rulesPath + ".tmp";
-    fs.writeFileSync(tmp, JSON.stringify(rules, null, 2));
-    fs.renameSync(tmp, rulesPath);
-  } catch (e) {
-    console.error("writeRules error:", e.message);
+    await connection.beginTransaction();
+    const ids = [];
+    for (const rule of rules) {
+      ids.push(rule.id);
+      await connection.query(
+        `INSERT INTO rules (id, user_id, type, symbol, dip_pct, tp_pct, entry_price, exit_price, budget_usdt, enabled, ai_summary, ai_model, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           type = VALUES(type),
+           symbol = VALUES(symbol),
+           dip_pct = VALUES(dip_pct),
+           tp_pct = VALUES(tp_pct),
+           entry_price = VALUES(entry_price),
+           exit_price = VALUES(exit_price),
+           budget_usdt = VALUES(budget_usdt),
+           enabled = VALUES(enabled),
+           ai_summary = VALUES(ai_summary),
+           ai_model = VALUES(ai_model),
+           created_at = VALUES(created_at)
+        `,
+        [
+          rule.id,
+          userId,
+          rule.type,
+          rule.symbol,
+          rule.type === "manual" ? Number(rule.dipPct) : null,
+          rule.type === "manual" ? Number(rule.tpPct) : null,
+          rule.type === "ai" ? Number(rule.entryPrice) : null,
+          rule.type === "ai" ? Number(rule.exitPrice) : null,
+          Number(rule.budgetUSDT) || 0,
+          rule.enabled ? 1 : 0,
+          rule.aiSummary || null,
+          rule.aiModel || null,
+          Number(rule.createdAt) || Date.now()
+        ]
+      );
+    }
+
+    if (ids.length) {
+      const placeholders = ids.map(() => "?").join(",");
+      await connection.query(
+        `DELETE FROM rules WHERE user_id = ? AND id NOT IN (${placeholders})`,
+        [userId, ...ids]
+      );
+    } else {
+      await connection.query("DELETE FROM rules WHERE user_id = ?", [userId]);
+    }
+
+    await connection.commit();
+  } catch (err) {
+    await connection.rollback();
+    throw err;
+  } finally {
+    connection.release();
   }
 }
 
-app.get("/api/rules", (req, res) => { res.json(readRules()); });
+async function removeRule(userId, id) {
+  await pool.query("DELETE FROM rules WHERE user_id = ? AND id = ?", [userId, id]);
+}
 
-app.post("/api/rules", (req, res) => {
-  const rules = Array.isArray(req.body) ? req.body : [req.body];
-  const { rules: normalized } = normalizeRules(rules);
-  writeRules(normalized);
-  res.json({ ok: true, count: normalized.length, rules: normalized });
-});
+function signToken(user) {
+  return jwt.sign({ sub: user.id }, JWT_SECRET, { expiresIn: "7d" });
+}
 
-app.delete("/api/rules/:id", (req, res) => {
+function authRequired(handler) {
+  return async (req, res, next) => {
+    const header = req.headers["authorization"] || "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+    if (!token) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    try {
+      const payload = jwt.verify(token, JWT_SECRET);
+      const user = await findUserById(payload.sub);
+      if (!user) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      req.user = user;
+      return handler(req, res, next);
+    } catch (err) {
+      console.error("auth error", err.message);
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+  };
+}
+
+function handleAsync(fn) {
+  return async (req, res) => {
+    try {
+      await fn(req, res);
+    } catch (err) {
+      console.error("API error", err);
+      res.status(500).json({ error: err.message || "Internal Server Error" });
+    }
+  };
+}
+
+app.post("/api/auth/register", handleAsync(async (req, res) => {
+  const { name, email, password } = req.body || {};
+  const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+  const cleanName = typeof name === "string" ? name.trim() : "";
+  const cleanPassword = typeof password === "string" ? password : "";
+
+  if (!cleanName || cleanName.length < 2) {
+    return res.status(400).json({ error: "Name is required" });
+  }
+  if (!cleanEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)) {
+    return res.status(400).json({ error: "Valid email is required" });
+  }
+  if (!cleanPassword || cleanPassword.length < 6) {
+    return res.status(400).json({ error: "Password must be at least 6 characters" });
+  }
+
+  const existing = await findUserByEmail(cleanEmail);
+  if (existing) {
+    return res.status(409).json({ error: "Email already registered" });
+  }
+
+  const hash = await bcrypt.hash(cleanPassword, 10);
+  const [result] = await pool.query(
+    "INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
+    [cleanName, cleanEmail, hash]
+  );
+
+  const user = { id: result.insertId, name: cleanName, email: cleanEmail };
+  const token = signToken(user);
+  res.json({ token, user });
+}));
+
+app.post("/api/auth/login", handleAsync(async (req, res) => {
+  const { email, password } = req.body || {};
+  const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+  const cleanPassword = typeof password === "string" ? password : "";
+
+  if (!cleanEmail || !cleanPassword) {
+    return res.status(400).json({ error: "Email and password are required" });
+  }
+
+  const user = await findUserByEmail(cleanEmail);
+  if (!user) {
+    return res.status(401).json({ error: "Invalid credentials" });
+  }
+
+  const match = await bcrypt.compare(cleanPassword, user.password_hash);
+  if (!match) {
+    return res.status(401).json({ error: "Invalid credentials" });
+  }
+
+  const token = signToken(user);
+  res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
+}));
+
+app.get("/api/auth/me", authRequired(handleAsync(async (req, res) => {
+  const hasKeys = await hasApiKeys(req.user.id);
+  res.json({ user: req.user, hasApiKeys: hasKeys });
+})));
+
+app.get("/api/users/api-keys", authRequired(handleAsync(async (req, res) => {
+  const [rows] = await pool.query(
+    "SELECT updated_at FROM user_api_keys WHERE user_id = ? LIMIT 1",
+    [req.user.id]
+  );
+  res.json({
+    hasKeys: rows.length > 0,
+    updatedAt: rows.length ? rows[0].updated_at : null
+  });
+})));
+
+app.post("/api/users/api-keys", authRequired(handleAsync(async (req, res) => {
+  const { apiKey, apiSecret } = req.body || {};
+  if (!apiKey || !apiSecret) {
+    return res.status(400).json({ error: "apiKey and apiSecret are required" });
+  }
+  await upsertUserApiKeys(req.user.id, apiKey.trim(), apiSecret.trim());
+  res.json({ ok: true });
+})));
+
+app.delete("/api/users/api-keys", authRequired(handleAsync(async (req, res) => {
+  await deleteUserApiKeys(req.user.id);
+  res.json({ ok: true });
+})));
+
+app.get("/api/rules", authRequired(handleAsync(async (req, res) => {
+  const rules = await readRules(req.user.id);
+  res.json({ rules });
+})));
+
+app.post("/api/rules", authRequired(handleAsync(async (req, res) => {
+  const payload = Array.isArray(req.body) ? req.body : [req.body];
+  const { rules: normalized } = normalizeRules(payload);
+  await writeRules(req.user.id, normalized);
+  const saved = await readRules(req.user.id);
+  res.json({ ok: true, count: saved.length, rules: saved });
+})));
+
+app.delete("/api/rules/:id", authRequired(handleAsync(async (req, res) => {
   const id = req.params.id;
   if (!id) return res.status(400).json({ error: "id is required" });
-  const rules = readRules();
-  const next = rules.filter(r => r.id !== id);
-  if (next.length === rules.length) {
-    return res.status(404).json({ error: "Rule not found" });
+  await removeRule(req.user.id, id);
+  const saved = await readRules(req.user.id);
+  res.json({ ok: true, count: saved.length, rules: saved });
+})));
+
+app.get("/api/orders", authRequired(handleAsync(async (req, res) => {
+  const creds = await getUserApiKeys(req.user.id);
+  if (!creds) {
+    return res.status(400).json({ error: "Connect your Binance API keys first" });
   }
-  writeRules(next);
-  res.json({ ok: true, count: next.length, rules: next });
-});
-
-app.get("/healthz", (req, res) => {
-try {
-ensureDataFiles();
-res.json({ ok: true, rulesCount: readRules().length });
-} catch {
-res.status(500).json({ ok: false });
-}
-});
-
-app.get("/api/orders", async (req, res) => {
-  try {
-    const symbols = Array.from(new Set(readRules().map(r => r.symbol).filter(Boolean)));
-    const data = [];
-    for (const symbol of symbols) {
-      const orders = await openOrders(symbol);
+  const rules = await readRules(req.user.id);
+  const symbols = Array.from(new Set(rules.map(r => r.symbol).filter(Boolean)));
+  if (!symbols.length) {
+    return res.json([]);
+  }
+  const client = createBinanceClient({ apiKey: creds.apiKey, apiSecret: creds.apiSecret, fallbackToFile: false });
+  const data = [];
+  for (const symbol of symbols) {
+    try {
+      const orders = await client.openOrders(symbol);
       data.push({ symbol, orders });
+    } catch (err) {
+      data.push({ symbol, error: err.message });
     }
-    res.json(data);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
   }
-});
+  res.json(data);
+})));
 
 function parseAiRoleResponse(text) {
   if (!text) throw new Error("Empty response from AI");
@@ -304,83 +615,116 @@ function parseAiRoleResponse(text) {
   return { symbol, entryPrice, exitPrice, raw: cleaned };
 }
 
-app.post("/api/ai-role", async (req, res) => {
-  try {
-    const key = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY;
-    if (!key) {
-      return res.status(400).json({ error: "OPENAI_API_KEY is required" });
-    }
-
-    const model = (req.body && req.body.model) || DEFAULT_AI_MODEL;
-    const budget = Number(req.body && req.body.budgetUSDT !== undefined ? req.body.budgetUSDT : DEFAULT_AI_BUDGET);
-    if (!(budget > 0)) {
-      return res.status(400).json({ error: "budgetUSDT must be a positive number" });
-    }
-
-    const prompt = "شات جي بي تي قم بتحليل سوق الكريبتو اليوم و الان وتحليل اهم ٧ عملات كريبتو سيوله اليوم والان وتحليل اخبار الكريبتو والاخبار الموثره علي الكريبتو اليوم والان - ثم قم بصنع قاعده شراء وبيع علي بينانس اسبوت بعد تفكير عميق جدا في كل المعطيات التي قمت بتحليلها اليوم علي ان ترسل الرد للبوت يحتوي مباشره وفقط علي :\nالزوج للتداول مثال BTCUSDT\nنقطه الدخول ليميت ميكر\nنقطه الخروج لاخذ الربح ليميت ميكر \nبدون إيقاف خساره";
-
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${key}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.2,
-        messages: [
-          {
-            role: "system",
-            content: "You are a crypto trading analyst. Reply only with the trading pair, entry limit maker price, and take-profit limit maker price as requested. Do not include stop losses or extra commentary."
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ]
-      })
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      return res.status(502).json({ error: `OpenAI API error: ${errText}` });
-    }
-
-    const payload = await response.json();
-    const text = payload?.choices?.[0]?.message?.content || "";
-    const parsed = parseAiRoleResponse(text);
-
-    const current = readRules();
-    const aiRule = {
-      id: randomUUID(),
-      type: "ai",
-      symbol: parsed.symbol,
-      entryPrice: parsed.entryPrice,
-      exitPrice: parsed.exitPrice,
-      budgetUSDT: budget,
-      enabled: true,
-      createdAt: Date.now(),
-      aiSummary: parsed.raw,
-      aiModel: model
-    };
-
-    const combined = [...current, aiRule];
-    const { rules: normalized } = normalizeRules(combined);
-    writeRules(normalized);
-    const saved = normalized.find(r => r.id === aiRule.id) || aiRule;
-
-    res.json({ ok: true, rule: saved });
-  } catch (e) {
-    console.error("/api/ai-role error", e);
-    res.status(500).json({ error: e.message });
+app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
+  const key = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY;
+  if (!key) {
+    return res.status(400).json({ error: "OPENAI_API_KEY is required" });
   }
-});
+
+  const model = (req.body && req.body.model) || DEFAULT_AI_MODEL;
+  const budget = Number(req.body && req.body.budgetUSDT !== undefined ? req.body.budgetUSDT : DEFAULT_AI_BUDGET);
+  if (!(budget > 0)) {
+    return res.status(400).json({ error: "budgetUSDT must be a positive number" });
+  }
+
+  const prompt = "شات جي بي تي قم بتحليل سوق الكريبتو اليوم و الان وتحليل اهم ٧ عملات كريبتو سيوله اليوم والان وتحليل اخبار الكريبتو والاخبار الموثره علي الكريبتو اليوم والان - ثم قم بصنع قاعده شراء وبيع علي بينانس اسبوت بعد تفكير عميق جدا في كل المعطيات التي قمت بتحليلها اليوم علي ان ترسل الرد للبوت يحتوي مباشره وفقط علي :\nالزوج للتداول مثال BTCUSDT\nنقطه الدخول ليميت ميكر\nنقطه الخروج لاخذ الربح ليميت ميكر \nبدون إيقاف خساره";
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${key}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.2,
+      messages: [
+        {
+          role: "system",
+          content: "You are a crypto trading analyst. Reply only with the trading pair, entry limit maker price, and take-profit limit maker price as requested. Do not include stop losses or extra commentary."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
+    })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    return res.status(502).json({ error: `OpenAI API error: ${errText}` });
+  }
+
+  const payload = await response.json();
+  const text = payload?.choices?.[0]?.message?.content || "";
+  const parsed = parseAiRoleResponse(text);
+
+  const current = await readRules(req.user.id);
+  const aiRule = {
+    id: randomUUID(),
+    type: "ai",
+    symbol: parsed.symbol,
+    entryPrice: parsed.entryPrice,
+    exitPrice: parsed.exitPrice,
+    budgetUSDT: budget,
+    enabled: true,
+    createdAt: Date.now(),
+    aiSummary: parsed.raw,
+    aiModel: model
+  };
+
+  const combined = [...current, aiRule];
+  const { rules: normalized } = normalizeRules(combined);
+  await writeRules(req.user.id, normalized);
+  const saved = await readRules(req.user.id);
+  const created = saved.find(r => r.id === aiRule.id) || aiRule;
+
+  res.json({ ok: true, rule: created });
+})));
+
+app.get("/healthz", handleAsync(async (req, res) => {
+  try {
+    const [rows] = await pool.query("SELECT COUNT(*) as count FROM rules");
+    res.json({ ok: true, rulesCount: rows[0]?.count || 0 });
+  } catch {
+    res.status(500).json({ ok: false });
+  }
+}));
 
 app.use("/", express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
-console.log("my1 engine running on port", PORT);
-});
 
-runEngine(readRules);
+async function getEngineSnapshots() {
+  const [rows] = await pool.query(
+    `SELECT u.id as user_id, k.api_key, k.api_secret
+     FROM users u
+     INNER JOIN user_api_keys k ON k.user_id = u.id`
+  );
+  const snapshots = [];
+  for (const row of rows) {
+    const apiKey = decryptSecret(row.api_key);
+    const apiSecret = decryptSecret(row.api_secret);
+    if (!apiKey || !apiSecret) continue;
+    const rules = await readRules(row.user_id);
+    const active = rules.filter(r => r.enabled);
+    if (!active.length) continue;
+    const binance = createBinanceClient({ apiKey, apiSecret, fallbackToFile: false });
+    snapshots.push({ userId: row.user_id, binance, rules: active });
+  }
+  return snapshots;
+}
+
+async function bootstrap() {
+  await initDb();
+  app.listen(PORT, () => {
+    console.log("my1 platform running on port", PORT);
+  });
+  runEngine(getEngineSnapshots);
+}
+
+bootstrap().catch(err => {
+  console.error("Failed to start server", err);
+  process.exit(1);
+});

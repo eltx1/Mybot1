@@ -1,38 +1,24 @@
-import { avgPrice, exchangeInfo, openOrders, myTrades, placeLimit, cancelOrder } from "./binance.js";
-
 const MAKER_ONLY = String(process.env.MAKER_ONLY || "true").toLowerCase() === "true";
 
-export function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
-
-async function getFilters(symbol){
-  const info = await exchangeInfo(symbol);
-  const s = info.symbols[0];
-  const lot = s.filters.find(f=>f.filterType==="LOT_SIZE");
-  const price = s.filters.find(f=>f.filterType==="PRICE_FILTER");
-  const notional = s.filters.find(f=>f.filterType==="NOTIONAL" || f.filterType==="MIN_NOTIONAL");
-  return {
-    stepSize: Number(lot.stepSize),
-    minQty: Number(lot.minQty),
-    tickSize: Number(price.tickSize),
-    minNotional: notional ? Number(notional.minNotional) : 10
-  };
+export function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function floorToStep(qty, step){
-  const n = Math.floor(qty/step)*step;
+function floorToStep(qty, step) {
+  const n = Math.floor(qty / step) * step;
   const s = step.toString();
   const decimals = s.includes(".") ? (s.length - s.indexOf(".") - 1) : 0;
   return Number(n.toFixed(decimals));
 }
 
-function roundToTick(p, tick){
-  const n = Math.round(p/tick)*tick;
+function roundToTick(price, tick) {
+  const n = Math.round(price / tick) * tick;
   const s = tick.toString();
   const decimals = s.includes(".") ? (s.length - s.indexOf(".") - 1) : 0;
   return Number(n.toFixed(decimals));
 }
 
-function makeClientOrderId(rule, side){
+function makeClientOrderId(rule, side) {
   const base = String(rule.id || `${rule.symbol}-${side}`)
     .replace(/[^a-z0-9]/gi, "")
     .slice(-20)
@@ -41,170 +27,209 @@ function makeClientOrderId(rule, side){
   return `MY1${tag}${base}`;
 }
 
-function pickOrderForRule(orders, rule, side){
+function pickOrderForRule(orders, rule, side) {
   const targetId = makeClientOrderId(rule, side);
   let order = orders.find(o => o.clientOrderId === targetId);
-  if (!order){
+  if (!order) {
     const sameSide = orders.filter(o => o.side === side);
     if (sameSide.length === 1) order = sameSide[0];
   }
   return order;
 }
 
-function priceDriftPct(a, b){
-  if (!(a>0) || !(b>0)) return Infinity;
-  return Math.abs(a-b)/b*100;
+function priceDriftPct(a, b) {
+  if (!(a > 0) || !(b > 0)) return Infinity;
+  return Math.abs(a - b) / b * 100;
 }
 
-export async function runEngine(getRules){
-  const lastTradeId = {}; // rule.id -> last trade id we saw
+async function getFilters(binance, symbol) {
+  const info = await binance.exchangeInfo(symbol);
+  const market = info.symbols?.find(s => s.symbol === symbol) || info.symbols?.[0];
+  if (!market) throw new Error(`Symbol ${symbol} not found in exchangeInfo response`);
+  const lot = market.filters.find(f => f.filterType === "LOT_SIZE");
+  const price = market.filters.find(f => f.filterType === "PRICE_FILTER");
+  const notional = market.filters.find(f => f.filterType === "NOTIONAL" || f.filterType === "MIN_NOTIONAL");
+  return {
+    stepSize: Number(lot?.stepSize || 0),
+    minQty: Number(lot?.minQty || 0),
+    tickSize: Number(price?.tickSize || 0),
+    minNotional: notional ? Number(notional.minNotional) : 10
+  };
+}
 
-  while (true){
-    try{
-      const rules = getRules();
-      const priceCache = {};
-      const filterCache = {};
-      const openOrderCache = {};
-      const tradeCache = {};
+async function processRule({ binance, rule, caches, lastTradeId, userKey }) {
+  const symbol = (rule.symbol || "").toUpperCase();
+  if (!symbol) return;
+  const enabled = rule.enabled !== false;
+  if (!enabled) return;
 
-      for (const rawRule of rules){
-        const rule = rawRule || {};
-        const symbol = (rule.symbol || "").toUpperCase();
-        const enabled = rule.enabled !== false;
-        if (!symbol || !enabled) continue;
+  const type = String(rule.type || "manual").toLowerCase() === "ai" ? "ai" : "manual";
+  const ruleKey = `${userKey}:${rule.id || `${type}:${symbol}`}`;
 
-        const type = String(rule.type || "manual").toLowerCase() === "ai" ? "ai" : "manual";
-        const ruleKey = rule.id || `${type}:${symbol}`;
-
-        if (!filterCache[symbol]){
-          try {
-            filterCache[symbol] = await getFilters(symbol);
-          } catch (err) {
-            console.error(`[ENGINE] filters error for ${symbol}:`, err.message);
-            continue;
-          }
-        }
-        const filters = filterCache[symbol];
-
-        if (!priceCache[symbol]){
-          try {
-            const { price } = await avgPrice(symbol);
-            priceCache[symbol] = Number(price);
-          } catch (err) {
-            console.error(`[ENGINE] price error for ${symbol}:`, err.message);
-            continue;
-          }
-        }
-        const currentPrice = priceCache[symbol];
-
-        const budget = Number(rule.budgetUSDT);
-        if (!(budget > 0)) continue;
-
-        let buyTarget = 0;
-        let tpPct = Number(rule.tpPct);
-        if (type === "manual"){
-          const dipPct = Number(rule.dipPct);
-          if (!(dipPct > 0) || !(tpPct > 0) || !(currentPrice > 0)) continue;
-          buyTarget = roundToTick(currentPrice * (1 - dipPct/100), filters.tickSize);
-        } else {
-          buyTarget = roundToTick(Number(rule.entryPrice), filters.tickSize);
-        }
-        if (!(buyTarget > 0)) continue;
-
-        let qty = floorToStep(budget / buyTarget, filters.stepSize);
-        if (qty < filters.minQty || (qty * buyTarget) < filters.minNotional){
-          continue; // budget too small for this symbol
-        }
-
-        let orders = openOrderCache[symbol];
-        if (!orders){
-          try {
-            orders = await openOrders(symbol);
-            openOrderCache[symbol] = orders;
-          } catch (err) {
-            console.error(`[ENGINE] openOrders error for ${symbol}:`, err.message);
-            continue;
-          }
-        }
-        orders = orders || [];
-
-        const buyId = makeClientOrderId(rule, "BUY");
-        const sellId = makeClientOrderId(rule, "SELL");
-
-        let buyOrder = pickOrderForRule(orders, rule, "BUY");
-
-        // place/refresh buy
-        if (!buyOrder){
-          try {
-            await placeLimit(symbol, "BUY", qty, buyTarget, { makerOnly: MAKER_ONLY, clientOrderId: buyId });
-            openOrderCache[symbol] = null; // force refresh on next iteration
-          } catch (err) {
-            console.error(`[ENGINE] place BUY failed for ${symbol}:`, err.message);
-          }
-          continue;
-        }
-
-        const drift = priceDriftPct(Number(buyOrder.price), buyTarget);
-        if (drift > 0.3){
-          try {
-            await cancelOrder(symbol, buyOrder.orderId);
-          } catch {}
-          try {
-            await placeLimit(symbol, "BUY", qty, buyTarget, { makerOnly: MAKER_ONLY, clientOrderId: buyId });
-            openOrderCache[symbol] = null;
-          } catch (err) {
-            console.error(`[ENGINE] replace BUY failed for ${symbol}:`, err.message);
-          }
-          continue;
-        }
-
-        let trades = tradeCache[symbol];
-        if (!trades){
-          try {
-            trades = await myTrades(symbol, 10);
-            tradeCache[symbol] = trades;
-          } catch (err) {
-            console.error(`[ENGINE] trades error for ${symbol}:`, err.message);
-            continue;
-          }
-        }
-        if (!Array.isArray(trades) || !trades.length) continue;
-
-        const recentBuy = [...trades].reverse().find(t => t.isBuyer);
-        if (!recentBuy) continue;
-        if (recentBuy.id === lastTradeId[ruleKey]) continue;
-
-        const filledPrice = Number(recentBuy.price);
-        if (!(filledPrice > 0)) continue;
-        const fillDrift = priceDriftPct(filledPrice, buyTarget);
-        if (fillDrift > 1.5) continue; // ignore fills too far from target
-
-        const filledQty = floorToStep(Number(recentBuy.qty), filters.stepSize);
-        if (!(filledQty > 0)) continue;
-
-        lastTradeId[ruleKey] = recentBuy.id;
-
-        let sellPrice = 0;
-        if (type === "manual"){
-          sellPrice = roundToTick(filledPrice * (1 + tpPct/100), filters.tickSize);
-        } else {
-          sellPrice = roundToTick(Number(rule.exitPrice), filters.tickSize);
-        }
-        if (!(sellPrice > 0)) continue;
-
-        const sellOrder = pickOrderForRule(orders, rule, "SELL");
-        if (!sellOrder){
-          try {
-            await placeLimit(symbol, "SELL", filledQty, sellPrice, { makerOnly: MAKER_ONLY, clientOrderId: sellId });
-            openOrderCache[symbol] = null;
-          } catch (err) {
-            console.error(`[ENGINE] place SELL failed for ${symbol}:`, err.message);
-          }
-        }
-      }
-    }catch(e){
-      console.error("[ENGINE]", e.message);
+  if (!caches.filter[symbol]) {
+    try {
+      caches.filter[symbol] = await getFilters(binance, symbol);
+    } catch (err) {
+      console.error(`[ENGINE] filters error for ${symbol}:`, err.message);
+      return;
     }
-    await sleep(5000);
   }
+  const filters = caches.filter[symbol];
+  if (!filters || !(filters.stepSize > 0) || !(filters.tickSize > 0)) return;
+
+  if (!caches.price[symbol]) {
+    try {
+      const { price } = await binance.avgPrice(symbol);
+      caches.price[symbol] = Number(price);
+    } catch (err) {
+      console.error(`[ENGINE] price error for ${symbol}:`, err.message);
+      return;
+    }
+  }
+  const currentPrice = caches.price[symbol];
+  if (!(currentPrice > 0)) return;
+
+  const budget = Number(rule.budgetUSDT);
+  if (!(budget > 0)) return;
+
+  let buyTarget = 0;
+  let tpPct = Number(rule.tpPct);
+  if (type === "manual") {
+    const dipPct = Number(rule.dipPct);
+    if (!(dipPct > 0) || !(tpPct > 0)) return;
+    buyTarget = roundToTick(currentPrice * (1 - dipPct / 100), filters.tickSize);
+  } else {
+    buyTarget = roundToTick(Number(rule.entryPrice), filters.tickSize);
+  }
+  if (!(buyTarget > 0)) return;
+
+  let qty = floorToStep(budget / buyTarget, filters.stepSize);
+  if (qty < filters.minQty || (qty * buyTarget) < filters.minNotional) {
+    return;
+  }
+
+  if (!caches.orders[symbol]) {
+    try {
+      caches.orders[symbol] = await binance.openOrders(symbol);
+    } catch (err) {
+      console.error(`[ENGINE] openOrders error for ${symbol}:`, err.message);
+      return;
+    }
+  }
+  let orders = caches.orders[symbol] || [];
+
+  const buyId = makeClientOrderId(rule, "BUY");
+  const sellId = makeClientOrderId(rule, "SELL");
+
+  let buyOrder = pickOrderForRule(orders, rule, "BUY");
+
+  if (!buyOrder) {
+    try {
+      await binance.placeLimit(symbol, "BUY", qty, buyTarget, { makerOnly: MAKER_ONLY, clientOrderId: buyId });
+      caches.orders[symbol] = null;
+    } catch (err) {
+      console.error(`[ENGINE] place BUY failed for ${symbol}:`, err.message);
+    }
+    return;
+  }
+
+  const drift = priceDriftPct(Number(buyOrder.price), buyTarget);
+  if (drift > 0.3) {
+    try {
+      await binance.cancelOrder(symbol, buyOrder.orderId);
+    } catch {}
+    try {
+      await binance.placeLimit(symbol, "BUY", qty, buyTarget, { makerOnly: MAKER_ONLY, clientOrderId: buyId });
+      caches.orders[symbol] = null;
+    } catch (err) {
+      console.error(`[ENGINE] replace BUY failed for ${symbol}:`, err.message);
+    }
+    return;
+  }
+
+  if (!caches.trades[symbol]) {
+    try {
+      caches.trades[symbol] = await binance.myTrades(symbol, 10);
+    } catch (err) {
+      console.error(`[ENGINE] trades error for ${symbol}:`, err.message);
+      return;
+    }
+  }
+  const trades = caches.trades[symbol];
+  if (!Array.isArray(trades) || !trades.length) return;
+
+  const recentBuy = [...trades].reverse().find(t => t.isBuyer);
+  if (!recentBuy) return;
+  if (recentBuy.id === lastTradeId.get(ruleKey)) return;
+
+  const filledPrice = Number(recentBuy.price);
+  if (!(filledPrice > 0)) return;
+  const fillDrift = priceDriftPct(filledPrice, buyTarget);
+  if (fillDrift > 1.5) return;
+
+  const filledQty = floorToStep(Number(recentBuy.qty), filters.stepSize);
+  if (!(filledQty > 0)) return;
+
+  lastTradeId.set(ruleKey, recentBuy.id);
+
+  let sellPrice = 0;
+  if (type === "manual") {
+    sellPrice = roundToTick(filledPrice * (1 + tpPct / 100), filters.tickSize);
+  } else {
+    sellPrice = roundToTick(Number(rule.exitPrice), filters.tickSize);
+  }
+  if (!(sellPrice > 0)) return;
+
+  const sellOrder = pickOrderForRule(orders, rule, "SELL");
+  if (!sellOrder) {
+    try {
+      await binance.placeLimit(symbol, "SELL", filledQty, sellPrice, { makerOnly: MAKER_ONLY, clientOrderId: sellId });
+      caches.orders[symbol] = null;
+    } catch (err) {
+      console.error(`[ENGINE] place SELL failed for ${symbol}:`, err.message);
+    }
+  }
+}
+
+async function processSnapshot(snapshot, lastTradeId) {
+  const { userId, binance, rules } = snapshot;
+  if (!binance || !Array.isArray(rules) || !rules.length) return;
+
+  const caches = {
+    price: {},
+    filter: {},
+    orders: {},
+    trades: {}
+  };
+  const userKey = String(userId);
+
+  for (const rule of rules) {
+    try {
+      await processRule({ binance, rule: rule || {}, caches, lastTradeId, userKey });
+    } catch (err) {
+      console.error(`[ENGINE] unexpected error for rule ${rule?.id || "unknown"}:`, err.message);
+    }
+  }
+}
+
+export function runEngine(getSnapshots) {
+  const lastTradeId = new Map();
+
+  async function loop() {
+    while (true) {
+      try {
+        const snapshots = await getSnapshots();
+        if (Array.isArray(snapshots)) {
+          for (const snapshot of snapshots) {
+            await processSnapshot(snapshot || {}, lastTradeId);
+          }
+        }
+      } catch (err) {
+        console.error("[ENGINE]", err.message);
+      }
+      await sleep(5000);
+    }
+  }
+
+  loop();
 }

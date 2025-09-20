@@ -2,90 +2,137 @@ import crypto from "crypto";
 import fetch from "node-fetch";
 import fs from "fs";
 
-const BASE = process.env.BINANCE_BASE || "https://api.binance.com";
-let API_KEY = process.env.BINANCE_KEY;
-let API_SECRET = process.env.BINANCE_SECRET;
+const DEFAULT_BASE = process.env.BINANCE_BASE || "https://api.binance.com";
 
-if (!API_KEY || !API_SECRET) {
+function loadFallbackCredentials() {
   try {
-    const creds = JSON.parse(fs.readFileSync("binance-keys.json", "utf8"));
-    API_KEY = creds.BINANCE_KEY;
-    API_SECRET = creds.BINANCE_SECRET;
-  } catch {}
-}
-
-function ensureCreds(){
-  if (!API_KEY || !API_SECRET) {
-    throw new Error("BINANCE_KEY and BINANCE_SECRET are required (env or binance-keys.json)");
+    const raw = fs.readFileSync("binance-keys.json", "utf8");
+    const creds = JSON.parse(raw);
+    return {
+      apiKey: creds.BINANCE_KEY,
+      apiSecret: creds.BINANCE_SECRET
+    };
+  } catch {
+    return { apiKey: process.env.BINANCE_KEY, apiSecret: process.env.BINANCE_SECRET };
   }
 }
 
-function sign(qs){
-  ensureCreds();
-  return crypto.createHmac("sha256", API_SECRET).update(qs).digest("hex");
-}
+export function createBinanceClient(options = {}) {
+  const {
+    apiKey: providedKey,
+    apiSecret: providedSecret,
+    base = DEFAULT_BASE,
+    fallbackToFile = true
+  } = options;
 
-async function binance(path, method="GET", params={}, signed=false){
-  const urlParams = new URLSearchParams();
-  for (const [k,v] of Object.entries(params)) {
-    if (v !== undefined && v !== null) urlParams.append(k, String(v));
+  let apiKey = providedKey;
+  let apiSecret = providedSecret;
+
+  if ((!apiKey || !apiSecret) && fallbackToFile) {
+    const fallback = loadFallbackCredentials();
+    apiKey = fallback.apiKey;
+    apiSecret = fallback.apiSecret;
   }
-  let url = `${BASE}${path}`;
-  let body = undefined;
-  const headers = {};
-  if (API_KEY) headers["X-MBX-APIKEY"] = API_KEY;
 
-  if (method === "GET"){
-    if (signed){
-      ensureCreds();
-      urlParams.set("timestamp", Date.now().toString());
-      urlParams.set("recvWindow", "5000");
-      const sig = sign(urlParams.toString());
-      url = `${url}?${urlParams.toString()}&signature=${sig}`;
-    }else{
-      const qs = urlParams.toString();
-      if (qs.length) url = `${url}?${qs}`;
+  function ensureCreds() {
+    if (!apiKey || !apiSecret) {
+      throw new Error("BINANCE_KEY and BINANCE_SECRET are required");
     }
-  } else {
-    if (signed){
-      ensureCreds();
-      urlParams.set("timestamp", Date.now().toString());
-      urlParams.set("recvWindow", "5000");
-      const sig = sign(urlParams.toString());
-      body = `${urlParams.toString()}&signature=${sig}`;
+  }
+
+  function sign(queryString) {
+    ensureCreds();
+    return crypto.createHmac("sha256", apiSecret).update(queryString).digest("hex");
+  }
+
+  async function request(path, method = "GET", params = {}, signed = false) {
+    const searchParams = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null) {
+        searchParams.append(key, String(value));
+      }
+    }
+
+    let url = `${base}${path}`;
+    let body;
+    const headers = {};
+
+    if (apiKey) headers["X-MBX-APIKEY"] = apiKey;
+
+    if (method === "GET") {
+      if (signed) {
+        ensureCreds();
+        searchParams.set("timestamp", Date.now().toString());
+        searchParams.set("recvWindow", "5000");
+        const qs = searchParams.toString();
+        const signature = sign(qs);
+        url = `${url}?${qs}&signature=${signature}`;
+      } else if ([...searchParams].length) {
+        const qs = searchParams.toString();
+        url = `${url}?${qs}`;
+      }
     } else {
-      body = urlParams.toString();
+      if (signed) {
+        ensureCreds();
+        searchParams.set("timestamp", Date.now().toString());
+        searchParams.set("recvWindow", "5000");
+        const qs = searchParams.toString();
+        const signature = sign(qs);
+        body = `${qs}&signature=${signature}`;
+      } else {
+        body = searchParams.toString();
+      }
+      headers["Content-Type"] = "application/x-www-form-urlencoded";
     }
-    headers["Content-Type"] = "application/x-www-form-urlencoded";
+
+    const response = await fetch(url, { method, headers, body });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(text || `${response.status} error from Binance`);
+    }
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
   }
 
-  const res = await fetch(url, { method, headers, body });
-  const text = await res.text();
-  if (!res.ok) { throw new Error(text); }
-  try { return JSON.parse(text); } catch { return text; }
-}
-
-// Public
-export const avgPrice = (symbol) => binance(`/api/v3/avgPrice`, "GET", { symbol });
-export const exchangeInfo = (symbol) => binance(`/api/v3/exchangeInfo`, "GET", { symbol });
-
-// Signed
-export const account = () => binance(`/api/v3/account`, "GET", {}, true);
-export const openOrders = (symbol) => binance(`/api/v3/openOrders`, "GET", symbol?{ symbol }:{}, true);
-export const myTrades = (symbol, limit=20) => binance(`/api/v3/myTrades`, "GET", { symbol, limit }, true);
-
-export async function placeLimit(symbol, side, qty, price, options={}){
-  const { makerOnly=false, clientOrderId } = options;
-  const payload = {
-    symbol,
-    side,
-    type: makerOnly ? "LIMIT_MAKER" : "LIMIT",
-    quantity: qty,
-    price
+  return {
+    avgPrice(symbol) {
+      return request(`/api/v3/avgPrice`, "GET", { symbol });
+    },
+    exchangeInfo(symbol) {
+      return request(`/api/v3/exchangeInfo`, "GET", { symbol });
+    },
+    account() {
+      return request(`/api/v3/account`, "GET", {}, true);
+    },
+    openOrders(symbol) {
+      const params = symbol ? { symbol } : {};
+      return request(`/api/v3/openOrders`, "GET", params, true);
+    },
+    myTrades(symbol, limit = 20) {
+      return request(`/api/v3/myTrades`, "GET", { symbol, limit }, true);
+    },
+    placeLimit(symbol, side, qty, price, options = {}) {
+      const { makerOnly = false, clientOrderId } = options;
+      const payload = {
+        symbol,
+        side,
+        type: makerOnly ? "LIMIT_MAKER" : "LIMIT",
+        quantity: qty,
+        price
+      };
+      if (!makerOnly) payload.timeInForce = "GTC";
+      if (clientOrderId) payload.newClientOrderId = clientOrderId;
+      return request(`/api/v3/order`, "POST", payload, true);
+    },
+    cancelOrder(symbol, orderId) {
+      return request(`/api/v3/order`, "DELETE", { symbol, orderId }, true);
+    }
   };
-  if (!makerOnly) payload.timeInForce = "GTC";
-  if (clientOrderId) payload.newClientOrderId = clientOrderId;
-  return binance(`/api/v3/order`, "POST", payload, true);
 }
 
-export const cancelOrder = (symbol, orderId) => binance(`/api/v3/order`, "DELETE", { symbol, orderId }, true);
+export const defaultClient = createBinanceClient();
+
+export default createBinanceClient;
