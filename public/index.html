@@ -535,6 +535,16 @@
       white-space: pre-wrap;
     }
 
+    .rule-error {
+      margin-top: 8px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(220, 38, 38, 0.08);
+      color: var(--danger);
+      font-size: 0.8rem;
+      line-height: 1.4;
+    }
+
     tr.empty-row td {
       text-align: center;
       padding: 36px 16px;
@@ -940,6 +950,9 @@
           rulePaused: "Rule paused.",
           ruleDeleted: "Rule deleted.",
           aiBudgetInvalid: "Enter a valid AI budget."
+        },
+        ruleErrors: {
+          symbolNotWhitelisted: "Binance rejected {{symbol}} because it isn't whitelisted for your API key. Enable the pair in your Binance API restrictions and try again."
         }
       },
       ar: {
@@ -1076,6 +1089,9 @@
           rulePaused: "تم إيقاف القاعدة.",
           ruleDeleted: "تم حذف القاعدة.",
           aiBudgetInvalid: "أدخل ميزانية صحيحة للذكاء الاصطناعي."
+        },
+        ruleErrors: {
+          symbolNotWhitelisted: "رفضت باينانس تنفيذ {{symbol}} لأن الزوج غير مفعّل لمفتاح الـ API الخاص بك. فعّل الزوج من إعدادات قيود مفاتيح باينانس ثم أعد المحاولة."
         }
       }
     };
@@ -1088,7 +1104,8 @@
       ordersTimer: null,
       statusTimer: null,
       hasKeys: false,
-      isOrdersLoading: false
+      isOrdersLoading: false,
+      lastRuleErrorsDigest: ''
     };
 
     const generateId = () => {
@@ -1249,6 +1266,7 @@
     function renderTables() {
       renderManualRules();
       renderAiRules();
+      announceRuleErrors();
     }
 
     function escapeHtml(str) {
@@ -1285,6 +1303,36 @@
       return d.toLocaleString(state.language === 'ar' ? 'ar-EG' : undefined);
     }
 
+    function resolveRuleError(rule) {
+      if (!rule) return '';
+      if (rule.lastErrorCode === 'symbol_not_whitelisted') {
+        return translate('ruleErrors.symbolNotWhitelisted', { symbol: rule.symbol || '' });
+      }
+      if (typeof rule.lastError === 'string' && rule.lastError.trim()) {
+        return rule.lastError.trim();
+      }
+      return '';
+    }
+
+    function announceRuleErrors() {
+      const issues = [];
+      for (const rule of state.rules || []) {
+        const message = resolveRuleError(rule);
+        if (message) {
+          issues.push({ id: rule.id, message, at: Number(rule.lastErrorAt) || 0 });
+        }
+      }
+      const digest = issues.map(issue => `${issue.id}:${issue.message}:${issue.at}`).join('|');
+      if (issues.length && digest !== state.lastRuleErrorsDigest) {
+        const focus = issues.reduce((acc, item) => {
+          if (!acc || item.at > acc.at) return item;
+          return acc;
+        }, issues[0]);
+        setStatus(focus.message, 'error');
+      }
+      state.lastRuleErrorsDigest = digest;
+    }
+
     function renderManualRules() {
       const manualRules = state.rules.filter(r => (r.type || '').toLowerCase() === 'manual');
       manualCountEl.textContent = manualRules.length;
@@ -1300,9 +1348,12 @@
         const tr = document.createElement('tr');
         if (!rule.enabled) tr.classList.add('is-paused');
         tr.dataset.id = rule.id;
+        const manualError = resolveRuleError(rule);
+        const manualErrorHtml = manualError ? `<div class="rule-error">${escapeHtml(manualError)}</div>` : '';
         tr.innerHTML = `
           <td data-label="${escapeHtml(translate('manual.table.rule'))}">
             <div class="symbol">${escapeHtml(rule.symbol)}</div>
+            ${manualErrorHtml}
           </td>
           <td data-label="${escapeHtml(translate('manual.table.targets'))}">
             <div>${escapeHtml(translate('manualRules.buyOnDipLabel'))} <strong>${formatPercent(rule.dipPct)}</strong></div>
@@ -1338,9 +1389,12 @@
         const tr = document.createElement('tr');
         if (!rule.enabled) tr.classList.add('is-paused');
         tr.dataset.id = rule.id;
+        const aiError = resolveRuleError(rule);
+        const aiErrorHtml = aiError ? `<div class="rule-error">${escapeHtml(aiError)}</div>` : '';
         tr.innerHTML = `
           <td data-label="${escapeHtml(translate('ai.table.rule'))}">
             <div class="symbol">${escapeHtml(rule.symbol)}</div>
+            ${aiErrorHtml}
             <details class="ai-details">
               <summary>${escapeHtml(translate('aiRules.summaryToggle'))}</summary>
               <div class="ai-summary">${escapeHtml(rule.aiSummary || '')}</div>
@@ -1394,6 +1448,46 @@
           `;
           ordersTableBody.appendChild(tr);
         }
+      }
+    }
+
+    async function refreshRuleErrors() {
+      try {
+        const data = await api('/api/rules/errors');
+        const list = Array.isArray(data?.errors) ? data.errors : [];
+        const map = new Map(list.map(item => [item.id, item]));
+        let changed = false;
+        const nextRules = state.rules.map(rule => {
+          const entry = map.get(rule.id);
+          if (entry) {
+            const message = typeof entry.message === 'string' ? entry.message.trim() : '';
+            const code = entry.code || undefined;
+            const createdAt = Number(entry.createdAt) || Date.now();
+            const nextMessage = message || undefined;
+            const nextCode = code || undefined;
+            const nextAt = createdAt;
+            if (rule.lastError !== nextMessage || rule.lastErrorCode !== nextCode || Number(rule.lastErrorAt || 0) !== nextAt) {
+              changed = true;
+              return { ...rule, lastError: nextMessage, lastErrorCode: nextCode, lastErrorAt: nextAt };
+            }
+            return rule;
+          }
+          if (rule.lastError || rule.lastErrorCode || rule.lastErrorAt) {
+            changed = true;
+            const next = { ...rule };
+            delete next.lastError;
+            delete next.lastErrorCode;
+            delete next.lastErrorAt;
+            return next;
+          }
+          return rule;
+        });
+        if (changed) {
+          state.rules = nextRules;
+          renderTables();
+        }
+      } catch (err) {
+        console.error('rule errors refresh failed', err);
       }
     }
 
@@ -1494,6 +1588,7 @@
         renderOrders([]);
         setStatus(err.message, 'error');
       } finally {
+        await refreshRuleErrors();
         state.isOrdersLoading = false;
       }
     }
@@ -1635,6 +1730,7 @@
       state.user = null;
       state.rules = [];
       state.hasKeys = false;
+      state.lastRuleErrorsDigest = '';
       if (state.ordersTimer) clearInterval(state.ordersTimer);
       renderTables();
       renderOrders([]);
