@@ -1,13 +1,13 @@
 <!doctype html>
-<html lang="ar" dir="ltr">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>منصة MY1 للتداول الذكي</title>
+  <title>MY1 Smart Trading Platform</title>
   <style>
     :root {
       color-scheme: light;
-      --bg: linear-gradient(135deg, #0f172a, #1d4ed8);
+      --bg: radial-gradient(circle at 10% 20%, #0f172a, #1d4ed8 55%, #2563eb 100%);
       --surface: rgba(255, 255, 255, 0.92);
       --surface-strong: #ffffff;
       --text: #0f172a;
@@ -17,7 +17,7 @@
       --accent-soft: rgba(37, 99, 235, 0.12);
       --success: #16a34a;
       --danger: #dc2626;
-      --shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+      --shadow: 0 32px 60px rgba(15, 23, 42, 0.28);
     }
 
     * { box-sizing: border-box; }
@@ -38,10 +38,96 @@
       flex: 1;
       display: flex;
       flex-direction: column;
+      position: relative;
     }
 
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      backdrop-filter: blur(12px);
+      background: rgba(15, 23, 42, 0.65);
+      color: #fff;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .site-header .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px clamp(20px, 6vw, 48px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 46px;
+      height: 46px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.12);
+      font-weight: 700;
+      font-size: 1.1rem;
+      letter-spacing: 0.08em;
+    }
+
+    .tagline {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .tagline strong {
+      font-size: 1rem;
+    }
+
+    .tagline span {
+      font-size: 0.85rem;
+      color: rgba(255,255,255,0.7);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .language-toggle {
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      border-radius: 999px;
+      padding: 8px 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s ease, transform 0.2s ease;
+    }
+
+    .language-toggle:hover { background: rgba(255,255,255,0.18); }
+
+    .ghost-link {
+      padding: 10px 18px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.25);
+      color: #fff;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: background 0.2s ease;
+    }
+
+    .ghost-link:hover { background: rgba(255,255,255,0.2); }
+
     .hero {
-      padding: clamp(32px, 6vw, 72px) clamp(20px, 8vw, 120px);
+      padding: clamp(48px, 8vw, 100px) clamp(20px, 10vw, 140px);
       color: #fff;
       position: relative;
       overflow: hidden;
@@ -51,8 +137,8 @@
       content: "";
       position: absolute;
       inset: 0;
-      background: radial-gradient(circle at top right, rgba(37, 99, 235, 0.45), transparent 50%),
-                  radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.38), transparent 50%);
+      background: radial-gradient(circle at top right, rgba(37, 99, 235, 0.45), transparent 52%),
+                  radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.42), transparent 55%);
       pointer-events: none;
     }
 
@@ -60,26 +146,26 @@
       position: relative;
       z-index: 1;
       display: grid;
-      gap: clamp(24px, 5vw, 60px);
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: clamp(32px, 5vw, 70px);
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
       align-items: center;
     }
 
     .hero h1 {
-      font-size: clamp(2.2rem, 5vw, 3.5rem);
-      margin: 0 0 16px;
-      line-height: 1.1;
+      font-size: clamp(2.4rem, 5.6vw, 3.8rem);
+      margin: 0 0 18px;
+      line-height: 1.05;
     }
 
     .hero p {
       margin: 0;
-      font-size: clamp(1rem, 2.2vw, 1.2rem);
-      color: rgba(255,255,255,0.85);
-      max-width: 520px;
+      font-size: clamp(1rem, 2.4vw, 1.2rem);
+      color: rgba(255,255,255,0.88);
+      max-width: 540px;
     }
 
     .hero-actions {
-      margin-top: 24px;
+      margin-top: 28px;
       display: flex;
       flex-wrap: wrap;
       gap: 12px;
@@ -89,7 +175,7 @@
       appearance: none;
       border: none;
       border-radius: 12px;
-      padding: 12px 20px;
+      padding: 12px 22px;
       font-weight: 600;
       font-size: 1rem;
       cursor: pointer;
@@ -102,13 +188,13 @@
     .btn.primary {
       background: #fff;
       color: var(--accent);
-      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.35);
+      box-shadow: 0 20px 50px rgba(15, 23, 42, 0.35);
     }
 
     .btn.primary:hover { transform: translateY(-2px); }
 
     .btn.secondary {
-      background: rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.14);
       color: #fff;
       border: 1px solid rgba(255,255,255,0.25);
     }
@@ -131,59 +217,59 @@
       position: relative;
       z-index: 1;
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 18px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
     }
 
     .feature-card {
       background: rgba(15, 23, 42, 0.55);
       color: #fff;
-      padding: 18px 20px;
-      border-radius: 18px;
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255,255,255,0.1);
-      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.35);
+      padding: 20px 22px;
+      border-radius: 20px;
+      backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.12);
+      box-shadow: 0 20px 50px rgba(15, 23, 42, 0.35);
     }
 
-    .feature-card h3 { margin: 0 0 10px; font-size: 1.1rem; }
+    .feature-card h3 { margin: 0 0 12px; font-size: 1.15rem; }
     .feature-card p { margin: 0; font-size: 0.95rem; color: rgba(255,255,255,0.82); }
 
     .auth-section {
-      margin-top: -80px;
-      padding: 0 clamp(20px, 6vw, 120px) clamp(60px, 8vw, 120px);
+      margin-top: -90px;
+      padding: 0 clamp(20px, 7vw, 140px) clamp(80px, 9vw, 140px);
       display: flex;
       justify-content: center;
     }
 
     .auth-card {
       background: var(--surface);
-      border-radius: 24px;
+      border-radius: 26px;
       box-shadow: var(--shadow);
-      max-width: 960px;
+      max-width: 1000px;
       width: 100%;
-      padding: clamp(24px, 4vw, 48px);
+      padding: clamp(26px, 4vw, 52px);
       display: grid;
-      gap: 24px;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 26px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     }
 
-    .auth-copy h2 { margin: 0 0 12px; font-size: 1.6rem; }
+    .auth-copy h2 { margin: 0 0 16px; font-size: 1.7rem; }
     .auth-copy p { margin: 0; color: var(--muted); line-height: 1.6; }
 
     .auth-panel {
       background: var(--surface-strong);
-      border-radius: 20px;
-      padding: 20px 24px;
+      border-radius: 22px;
+      padding: 24px 26px;
       border: 1px solid rgba(15, 23, 42, 0.08);
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 18px;
     }
 
     .auth-tabs {
       display: inline-flex;
       background: rgba(15, 23, 42, 0.05);
-      border-radius: 12px;
+      border-radius: 14px;
       padding: 4px;
       margin-bottom: 12px;
     }
@@ -202,13 +288,13 @@
     .auth-tabs button.is-active {
       background: var(--surface);
       color: var(--accent);
-      box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
+      box-shadow: 0 12px 24px rgba(37, 99, 235, 0.18);
     }
 
     form {
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 16px;
     }
 
     label {
@@ -242,7 +328,7 @@
 
     /* Dashboard */
     #dashboard {
-      padding: clamp(32px, 5vw, 64px) clamp(20px, 7vw, 100px);
+      padding: clamp(40px, 6vw, 72px) clamp(20px, 8vw, 120px);
       background: #f5f6fb;
       min-height: 100vh;
     }
@@ -253,7 +339,7 @@
       justify-content: space-between;
       align-items: flex-start;
       gap: 24px;
-      margin-bottom: 24px;
+      margin-bottom: 28px;
     }
 
     .dashboard-header h1 {
@@ -270,29 +356,29 @@
     .pill {
       display: inline-flex;
       align-items: center;
-      padding: 4px 12px;
+      padding: 6px 14px;
       border-radius: 999px;
       font-weight: 600;
-      font-size: 0.8rem;
+      font-size: 0.85rem;
       background: rgba(37, 99, 235, 0.12);
       color: var(--accent);
     }
 
     .pill.success { background: rgba(22, 163, 74, 0.16); color: var(--success); }
-    .pill.danger { background: rgba(220, 38, 38, 0.16); color: var(--danger); }
+    .pill.danger { background: rgba(220, 38, 38, 0.12); color: var(--danger); }
 
     .dashboard-grid {
       display: grid;
       gap: 24px;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      margin-bottom: 24px;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      margin-bottom: 32px;
     }
 
     .card {
       background: #fff;
-      border-radius: 20px;
-      padding: 24px;
-      box-shadow: 0 20px 45px rgba(15, 23, 42, 0.12);
+      border-radius: 22px;
+      padding: 26px;
+      box-shadow: 0 24px 55px rgba(15, 23, 42, 0.12);
       border: 1px solid rgba(148, 163, 184, 0.18);
     }
 
@@ -312,8 +398,8 @@
 
     .form-row {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 16px;
     }
 
     .actions { display: flex; gap: 12px; flex-wrap: wrap; }
@@ -341,6 +427,11 @@
       border-top-color: #fff;
       border-radius: 50%;
       animation: spin 0.75s linear infinite;
+    }
+
+    .btn.primary[data-loading="true"]::after {
+      border-color: rgba(37, 99, 235, 0.35);
+      border-top-color: var(--accent);
     }
 
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -388,7 +479,7 @@
       transform: translateX(20px);
     }
 
-    .table-card { margin-bottom: 24px; }
+    .table-card { margin-bottom: 28px; }
     .table-header {
       display: flex;
       justify-content: space-between;
@@ -401,7 +492,7 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 640px;
+      min-width: 680px;
     }
 
     th, td {
@@ -440,36 +531,30 @@
       border-radius: 10px;
       margin-top: 6px;
       font-size: 0.85rem;
+      color: var(--text);
       white-space: pre-wrap;
     }
 
-    .empty-row td {
-      padding: 24px 16px;
+    tr.empty-row td {
       text-align: center;
+      padding: 36px 16px;
       color: var(--muted);
-      font-style: italic;
+      font-weight: 500;
     }
 
-    @media (max-width: 900px) {
-      .auth-section { margin-top: -40px; }
-      table { min-width: 0; }
-      table.data-table thead { display: none; }
-      table.data-table tbody tr {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 12px;
-        padding: 16px 0;
-      }
-      table.data-table td {
-        border: none;
-        padding: 0;
-      }
-      table.data-table td::before {
+    @media (max-width: 768px) {
+      .site-header .container { flex-direction: column; align-items: stretch; }
+      .brand { justify-content: space-between; }
+      .header-actions { justify-content: space-between; }
+      .auth-card { padding: 24px; }
+      table { min-width: 100%; }
+      thead { display: none; }
+      tbody tr { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px 0; }
+      tbody td { border-bottom: none; padding: 0; font-size: 0.9rem; }
+      tbody td::before {
         content: attr(data-label);
         display: block;
-        font-size: 0.75rem;
         font-weight: 600;
-        text-transform: uppercase;
         color: var(--muted);
         margin-bottom: 4px;
       }
@@ -478,34 +563,44 @@
 </head>
 <body>
   <div class="site">
+    <header class="site-header">
+      <div class="container">
+        <div class="brand">
+          <span class="logo">MY1</span>
+          <div class="tagline">
+            <strong data-i18n="header.taglineTitle">Smart crypto autopilot</strong>
+            <span data-i18n="header.taglineSubtitle">Designed for modern spot traders.</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button id="languageToggle" class="language-toggle" type="button">عربي</button>
+          <a class="ghost-link" data-scroll-to-auth href="#authSection" data-i18n="header.cta">Explore dashboard</a>
+        </div>
+      </div>
+    </header>
+
     <section class="hero" id="landing">
       <div class="hero-content">
         <div>
-          <h1>حوّل البوت إلى منصة تداول متكاملة</h1>
-          <p>
-            منصة MY1 تمنحك لوحة تحكم احترافية لإدارة أوامر التداول الذكية، إنشاء قواعد يدوية أو بواسطة الذكاء الاصطناعي، وربط حساب بينانس الخاص بك بأمان.
-          </p>
+          <h1 data-i18n="hero.title">Trade smarter with AI-assisted automation</h1>
+          <p data-i18n="hero.subtitle">MY1 monitors the market in real time, suggests AI-powered strategies, and executes your spot rules with transparent controls.</p>
           <div class="hero-actions">
-            <button class="btn primary" data-scroll-to-auth>ابدأ الآن</button>
-            <button class="btn secondary" data-scroll-to-auth>تسجيل الدخول أو إنشاء حساب</button>
+            <button class="btn primary" data-scroll-to-auth type="button" data-i18n="hero.primaryCta">Start now</button>
+            <button class="btn secondary" type="button" data-scroll-to-auth data-i18n="hero.secondaryCta">See how it works</button>
           </div>
         </div>
         <div class="features">
           <article class="feature-card">
-            <h3>إدارة مستخدمين</h3>
-            <p>تسجيل، تسجيل دخول، وحفظ بياناتك في قاعدة بيانات MySQL آمنة.</p>
+            <h3 data-i18n="features.automationTitle">Personal rule engine</h3>
+            <p data-i18n="features.automationCopy">Define dip buying and take-profit logic with full transparency. Rules stay under your account control.</p>
           </article>
           <article class="feature-card">
-            <h3>ربط Binance</h3>
-            <p>خزن مفاتيح API لكل مستخدم وشغّل البوت باستراتيجية منفصلة لكل حساب.</p>
+            <h3 data-i18n="features.securityTitle">Secure key management</h3>
+            <p data-i18n="features.securityCopy">Connect Binance spot keys with encryption. You are always able to rotate or disconnect in one click.</p>
           </article>
           <article class="feature-card">
-            <h3>ذكاء اصطناعي</h3>
-            <p>ولّد قواعد تداول لحظية عبر GPT، تُحفظ تلقائيًا وتعمل مع المحرك.</p>
-          </article>
-          <article class="feature-card">
-            <h3>تصميم عصري</h3>
-            <p>لوحة تحكم حديثة، سريعة الاستجابة، تدعم العربية والأجهزة المحمولة.</p>
+            <h3 data-i18n="features.aiTitle">AI market insights</h3>
+            <p data-i18n="features.aiCopy">Leverage live market research prompts to craft strategies backed by up-to-date data.</p>
           </article>
         </div>
       </div>
@@ -514,41 +609,39 @@
     <section class="auth-section" id="authSection">
       <div class="auth-card">
         <div class="auth-copy">
-          <h2>سجّل دخولك لإدارة البوت</h2>
-          <p>
-            كل مستخدم يمتلك بياناته الخاصة، مفاتيح Binance، وقواعده المخزنة في قاعدة البيانات. بعد التسجيل يمكنك التحكم الكامل في المنصة ومتابعة الأوامر المفتوحة.
-          </p>
+          <h2 data-i18n="auth.title">Your personal trading cockpit</h2>
+          <p data-i18n="auth.description">Track AI-generated ideas, manage manual rules, and sync Binance activity from a single secure interface.</p>
         </div>
         <div class="auth-panel">
           <div class="auth-tabs">
-            <button type="button" class="is-active" data-auth-tab="login">تسجيل الدخول</button>
-            <button type="button" data-auth-tab="register">إنشاء حساب</button>
+            <button type="button" class="is-active" data-auth-tab="login" data-i18n="auth.loginTab">Sign in</button>
+            <button type="button" data-auth-tab="register" data-i18n="auth.registerTab">Create account</button>
           </div>
           <form id="loginForm" data-auth-panel="login">
             <div>
-              <label for="loginEmail">البريد الإلكتروني</label>
-              <input id="loginEmail" type="email" autocomplete="email" required>
+              <label for="loginEmail" data-i18n="auth.emailLabel">Email</label>
+              <input id="loginEmail" type="email" autocomplete="email" required data-i18n-placeholder="auth.emailPlaceholder">
             </div>
             <div>
-              <label for="loginPassword">كلمة المرور</label>
-              <input id="loginPassword" type="password" autocomplete="current-password" required>
+              <label for="loginPassword" data-i18n="auth.passwordLabel">Password</label>
+              <input id="loginPassword" type="password" autocomplete="current-password" required data-i18n-placeholder="auth.passwordPlaceholder">
             </div>
-            <button class="btn primary" type="submit">دخول</button>
+            <button class="btn primary" type="submit" data-i18n="auth.loginCta">Sign in</button>
           </form>
           <form id="registerForm" data-auth-panel="register" class="hidden">
             <div>
-              <label for="registerName">الاسم الكامل</label>
-              <input id="registerName" required>
+              <label for="registerName" data-i18n="auth.nameLabel">Full name</label>
+              <input id="registerName" required data-i18n-placeholder="auth.namePlaceholder">
             </div>
             <div>
-              <label for="registerEmail">البريد الإلكتروني</label>
-              <input id="registerEmail" type="email" autocomplete="email" required>
+              <label for="registerEmail" data-i18n="auth.emailLabel">Email</label>
+              <input id="registerEmail" type="email" autocomplete="email" required data-i18n-placeholder="auth.emailPlaceholder">
             </div>
             <div>
-              <label for="registerPassword">كلمة المرور</label>
-              <input id="registerPassword" type="password" autocomplete="new-password" required>
+              <label for="registerPassword" data-i18n="auth.passwordLabel">Password</label>
+              <input id="registerPassword" type="password" autocomplete="new-password" required data-i18n-placeholder="auth.passwordPlaceholder">
             </div>
-            <button class="btn primary" type="submit">إنشاء الحساب</button>
+            <button class="btn primary" type="submit" data-i18n="auth.registerCta">Create account</button>
           </form>
         </div>
       </div>
@@ -557,12 +650,12 @@
     <main id="dashboard" class="hidden">
       <div class="dashboard-header">
         <div>
-          <h1>لوحة تحكم منصة MY1</h1>
-          <p class="muted">إدارة القواعد، متابعة الأوامر، وربط واجهة Binance لكل مستخدم من مكان واحد.</p>
+          <h1 data-i18n="dashboard.title">MY1 control center</h1>
+          <p class="muted" data-i18n="dashboard.subtitle">Manage AI ideas, monitor open orders, and keep your Binance link under supervision.</p>
         </div>
         <div class="user-meta">
-          <span class="pill" id="welcomeName">مرحبا</span>
-          <button class="btn ghost" id="logoutBtn">تسجيل الخروج</button>
+          <span class="pill" id="welcomeName" data-i18n="dashboard.welcome">Welcome</span>
+          <button class="btn ghost" id="logoutBtn" type="button" data-i18n="dashboard.logout">Sign out</button>
         </div>
       </div>
 
@@ -570,89 +663,90 @@
 
       <section class="dashboard-grid">
         <article class="card">
-          <h2>ربط مفاتيح Binance</h2>
-          <p>أدخل مفاتيح API الخاصة بك (Spot) ليعمل البوت على حسابك. يتم حفظها مشفرة داخل قاعدة البيانات.</p>
-          <div>الحالة: <span id="apiKeysStatus" class="pill danger">غير متصل</span></div>
+          <h2 data-i18n="api.title">Connect Binance keys</h2>
+          <p data-i18n="api.description">Add your spot API credentials to activate the engine. Keys remain encrypted and you can revoke them any time.</p>
+          <div>
+            <span data-i18n="api.statusLabel">Status:</span> <span id="apiKeysStatus" class="pill danger" data-i18n="api.disconnected">Disconnected</span>
+          </div>
           <form id="apiKeysForm">
             <div>
-              <label for="apiKey">API Key</label>
-              <input id="apiKey" autocomplete="off" placeholder="XXXXXXXX" required>
+              <label for="apiKey" data-i18n="api.keyLabel">API key</label>
+              <input id="apiKey" autocomplete="off" required placeholder="XXXXXXXX">
             </div>
             <div>
-              <label for="apiSecret">API Secret</label>
-              <input id="apiSecret" autocomplete="off" placeholder="XXXXXXXX" required>
+              <label for="apiSecret" data-i18n="api.secretLabel">API secret</label>
+              <input id="apiSecret" autocomplete="off" required placeholder="XXXXXXXX">
             </div>
             <div class="actions">
-              <button class="btn primary" type="submit">حفظ المفاتيح</button>
-              <button class="btn ghost" type="button" id="removeKeys">إزالة الربط</button>
+              <button class="btn primary" type="submit" data-i18n="api.save">Save keys</button>
+              <button class="btn ghost" type="button" id="removeKeys" data-i18n="api.remove">Disconnect</button>
             </div>
-            <p class="muted small">استخدم مفاتيح تداول Spot مع صلاحيات القراءة والتداول فقط.</p>
+            <p class="muted small" data-i18n="api.helper">Use spot trading keys with read and trade permissions only.</p>
           </form>
         </article>
 
         <article class="card">
-          <h2>قاعدة يدوية</h2>
-          <p>كوّن إستراتيجية شراء عند الهبوط وجني أرباح محدد.</p>
+          <h2 data-i18n="manual.title">Manual rule</h2>
+          <p data-i18n="manual.description">Create a dip buying strategy with your preferred take-profit target.</p>
           <form id="manualForm">
             <div class="form-row">
               <div>
-                <label for="symbol">الزوج</label>
-                <input id="symbol" placeholder="مثال: SOLUSDT" required>
+                <label for="symbol" data-i18n="manual.symbolLabel">Pair</label>
+                <input id="symbol" required data-i18n-placeholder="manual.symbolPlaceholder">
               </div>
               <div>
-                <label for="dip">نسبة الشراء عند الهبوط %</label>
-                <input id="dip" type="number" step="0.01" min="0" placeholder="2" required>
+                <label for="dip" data-i18n="manual.dipLabel">Buy the dip %</label>
+                <input id="dip" type="number" step="0.01" min="0" required data-i18n-placeholder="manual.dipPlaceholder">
               </div>
             </div>
             <div class="form-row">
               <div>
-                <label for="tp">نسبة جني الربح %</label>
-                <input id="tp" type="number" step="0.01" min="0" placeholder="2" required>
+                <label for="tp" data-i18n="manual.tpLabel">Take profit %</label>
+                <input id="tp" type="number" step="0.01" min="0" required data-i18n-placeholder="manual.tpPlaceholder">
               </div>
               <div>
-                <label for="budget">ميزانية الصفقة (USDT)</label>
-                <input id="budget" type="number" step="0.01" min="0" placeholder="50" required>
+                <label for="budget" data-i18n="manual.budgetLabel">Trade budget (USDT)</label>
+                <input id="budget" type="number" step="0.01" min="0" required data-i18n-placeholder="manual.budgetPlaceholder">
               </div>
             </div>
             <div class="actions">
-              <button class="btn primary" type="submit">إضافة القاعدة</button>
-              <button class="btn ghost" type="button" id="syncRules">مزامنة مع المحرك</button>
+              <button class="btn primary" type="submit" data-i18n="manual.add">Add rule</button>
+              <button class="btn ghost" type="button" id="syncRules" data-i18n="manual.sync">Sync with engine</button>
             </div>
           </form>
         </article>
 
         <article class="card">
-          <h2>قاعدة بالذكاء الاصطناعي</h2>
-          <p>اضغط الزر ليقوم ChatGPT بتحليل السوق وبناء قاعدة تداول جاهزة.</p>
+          <h2 data-i18n="ai.title">AI-powered rule</h2>
+          <p data-i18n="ai.description">Request a market-ready spot strategy backed by real-time research.</p>
           <form id="aiForm">
             <div>
-              <label for="aiBudget">ميزانية AI (USDT)</label>
+              <label for="aiBudget" data-i18n="ai.budgetLabel">AI budget (USDT)</label>
               <input id="aiBudget" type="number" min="10" value="100" required>
             </div>
             <div>
-              <label for="aiModel">النموذج</label>
+              <label for="aiModel" data-i18n="ai.modelLabel">Model</label>
               <input id="aiModel" value="gpt-4o-mini" disabled>
             </div>
-            <button class="btn primary" id="aiGenerate" type="submit">توليد قاعدة بالذكاء الاصطناعي</button>
-            <p class="muted small">يتم إرسال البرومبت المطلوب إلى ChatGPT وإضافة الرد مباشرةً كقاعدة AI.</p>
+            <button class="btn primary" id="aiGenerate" type="submit" data-i18n="ai.generate">Generate with AI</button>
+            <p class="muted small" data-i18n="ai.helper">The assistant researches live data before returning a ready-to-use rule.</p>
           </form>
         </article>
       </section>
-
       <section class="card table-card">
         <div class="table-header">
-          <h2>القواعد اليدوية</h2>
+          <h2 data-i18n="manual.tableTitle">Manual rules</h2>
           <span class="pill" id="manualCount">0</span>
         </div>
         <div class="table-wrapper">
           <table class="data-table" id="manualRulesTable">
             <thead>
               <tr>
-                <th>القاعدة</th>
-                <th>الأهداف</th>
-                <th>الميزانية</th>
-                <th>الحالة</th>
-                <th>إجراءات</th>
+                <th data-i18n="manual.table.rule">Rule</th>
+                <th data-i18n="manual.table.targets">Targets</th>
+                <th data-i18n="manual.table.budget">Budget</th>
+                <th data-i18n="manual.table.status">Status</th>
+                <th data-i18n="manual.table.actions">Actions</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -662,19 +756,19 @@
 
       <section class="card table-card">
         <div class="table-header">
-          <h2>قواعد الذكاء الاصطناعي</h2>
+          <h2 data-i18n="ai.tableTitle">AI rules</h2>
           <span class="pill" id="aiCount">0</span>
         </div>
         <div class="table-wrapper">
           <table class="data-table" id="aiRulesTable">
             <thead>
               <tr>
-                <th>القاعدة</th>
-                <th>سعر الدخول</th>
-                <th>هدف الربح</th>
-                <th>الميزانية</th>
-                <th>الحالة</th>
-                <th>إجراءات</th>
+                <th data-i18n="ai.table.rule">Rule</th>
+                <th data-i18n="ai.table.entry">Entry price</th>
+                <th data-i18n="ai.table.exit">Take-profit</th>
+                <th data-i18n="ai.table.budget">Budget</th>
+                <th data-i18n="ai.table.status">Status</th>
+                <th data-i18n="ai.table.actions">Actions</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -684,22 +778,22 @@
 
       <section class="card table-card">
         <div class="table-header">
-          <h2>الأوامر المفتوحة</h2>
+          <h2 data-i18n="orders.title">Open orders</h2>
           <div class="actions">
-            <button class="btn ghost" id="refreshOrders">تحديث</button>
+            <button class="btn ghost" id="refreshOrders" type="button" data-i18n="orders.refresh">Refresh</button>
           </div>
         </div>
         <div class="table-wrapper">
           <table class="data-table" id="ordersTable">
             <thead>
               <tr>
-                <th>الزوج</th>
-                <th>الاتجاه</th>
-                <th>السعر</th>
-                <th>الكمية</th>
-                <th>النوع</th>
-                <th>الحالة</th>
-                <th>آخر تحديث</th>
+                <th data-i18n="orders.table.symbol">Pair</th>
+                <th data-i18n="orders.table.side">Side</th>
+                <th data-i18n="orders.table.price">Price</th>
+                <th data-i18n="orders.table.qty">Quantity</th>
+                <th data-i18n="orders.table.type">Type</th>
+                <th data-i18n="orders.table.status">Status</th>
+                <th data-i18n="orders.table.updated">Last update</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -711,7 +805,283 @@
 
   <script>
   (function(){
+    const translations = {
+      en: {
+        meta: { title: "MY1 Smart Trading Platform" },
+        header: {
+          taglineTitle: "Smart crypto autopilot",
+          taglineSubtitle: "Designed for modern spot traders.",
+          cta: "Explore dashboard"
+        },
+        hero: {
+          title: "Trade smarter with AI-assisted automation",
+          subtitle: "MY1 monitors the market in real time, suggests AI-powered strategies, and executes your spot rules with transparent controls.",
+          primaryCta: "Start now",
+          secondaryCta: "See how it works"
+        },
+        features: {
+          automationTitle: "Personal rule engine",
+          automationCopy: "Define dip buying and take-profit logic with full transparency. Rules stay under your account control.",
+          securityTitle: "Secure key management",
+          securityCopy: "Connect Binance spot keys with encryption. You are always able to rotate or disconnect in one click.",
+          aiTitle: "AI market insights",
+          aiCopy: "Leverage live market research prompts to craft strategies backed by up-to-date data."
+        },
+        auth: {
+          title: "Your personal trading cockpit",
+          description: "Track AI-generated ideas, manage manual rules, and sync Binance activity from a single secure interface.",
+          loginTab: "Sign in",
+          registerTab: "Create account",
+          emailLabel: "Email",
+          emailPlaceholder: "name@example.com",
+          passwordLabel: "Password",
+          passwordPlaceholder: "Enter password",
+          nameLabel: "Full name",
+          namePlaceholder: "How should we greet you?",
+          loginCta: "Sign in",
+          registerCta: "Create account"
+        },
+        dashboard: {
+          title: "MY1 control center",
+          subtitle: "Manage AI ideas, monitor open orders, and keep your Binance link under supervision.",
+          welcome: "Welcome",
+          logout: "Sign out"
+        },
+        api: {
+          title: "Connect Binance keys",
+          description: "Add your spot API credentials to activate the engine. Keys remain encrypted and you can revoke them any time.",
+          statusLabel: "Status:",
+          connected: "Connected",
+          disconnected: "Disconnected",
+          keyLabel: "API key",
+          secretLabel: "API secret",
+          save: "Save keys",
+          remove: "Disconnect",
+          helper: "Use spot trading keys with read and trade permissions only."
+        },
+        manual: {
+          title: "Manual rule",
+          description: "Create a dip buying strategy with your preferred take-profit target.",
+          symbolLabel: "Pair",
+          symbolPlaceholder: "Example: SOLUSDT",
+          dipLabel: "Buy the dip %",
+          dipPlaceholder: "2",
+          tpLabel: "Take profit %",
+          tpPlaceholder: "2",
+          budgetLabel: "Trade budget (USDT)",
+          budgetPlaceholder: "50",
+          add: "Add rule",
+          sync: "Sync with engine",
+          tableTitle: "Manual rules",
+          table: {
+            rule: "Rule",
+            targets: "Targets",
+            budget: "Budget",
+            status: "Status",
+            actions: "Actions"
+          }
+        },
+        ai: {
+          title: "AI-powered rule",
+          description: "Request a market-ready spot strategy backed by real-time research.",
+          budgetLabel: "AI budget (USDT)",
+          modelLabel: "Model",
+          generate: "Generate with AI",
+          helper: "The assistant researches live data before returning a ready-to-use rule.",
+          tableTitle: "AI rules",
+          table: {
+            rule: "Rule",
+            entry: "Entry price",
+            exit: "Take-profit",
+            budget: "Budget",
+            status: "Status",
+            actions: "Actions"
+          }
+        },
+        orders: {
+          title: "Open orders",
+          refresh: "Refresh",
+          table: {
+            symbol: "Pair",
+            side: "Side",
+            price: "Price",
+            qty: "Quantity",
+            type: "Type",
+            status: "Status",
+            updated: "Last update"
+          },
+          empty: "No open orders right now."
+        },
+        manualRules: {
+          buyOnDipLabel: "Buy on dip:",
+          takeProfitLabel: "Take profit:",
+          empty: "No manual rules yet."
+        },
+        aiRules: {
+          summaryToggle: "View AI summary",
+          empty: "No AI rules yet."
+        },
+        common: {
+          delete: "Delete",
+          confirmDelete: "Delete this rule?",
+          enabled: "Enabled",
+          disabled: "Disabled"
+        },
+        status: {
+          loginSuccess: "Signed in successfully.",
+          registerSuccess: "Account created successfully.",
+          keysSaved: "API keys saved.",
+          keysRemoved: "Connection removed.",
+          manualAdded: "Manual rule added.",
+          manualSynced: "Rules synced with engine.",
+          aiGenerated: "AI rule generated successfully.",
+          ordersRefreshed: "Open orders refreshed.",
+          ruleActivated: "Rule enabled.",
+          rulePaused: "Rule paused.",
+          ruleDeleted: "Rule deleted.",
+          aiBudgetInvalid: "Enter a valid AI budget."
+        }
+      },
+      ar: {
+        meta: { title: "منصة MY1 للتداول الذكي" },
+        header: {
+          taglineTitle: "طيار آلي ذكي للعملات الرقمية",
+          taglineSubtitle: "مصمم لمتداولي السبوت العصريين.",
+          cta: "استكشف اللوحة"
+        },
+        hero: {
+          title: "تداول بذكاء مع أتمتة مدعومة بالذكاء الاصطناعي",
+          subtitle: "تراقب MY1 السوق لحظيًا، وتقترح استراتيجيات مدعومة بالذكاء الاصطناعي، وتنفذ قواعدك بوضوح كامل.",
+          primaryCta: "ابدأ الآن",
+          secondaryCta: "تعرّف على آلية العمل"
+        },
+        features: {
+          automationTitle: "محرك قواعد شخصي",
+          automationCopy: "كوِّن قواعد شراء عند الانخفاض وجني ربح مع تحكم كامل. تبقى القواعد تحت إدارة حسابك دائمًا.",
+          securityTitle: "إدارة مفاتيح آمنة",
+          securityCopy: "اربط مفاتيح Binance Spot بتشفير كامل مع إمكانية الفصل أو التدوير بضغطة زر.",
+          aiTitle: "رؤى سوقية بالذكاء الاصطناعي",
+          aiCopy: "استفد من برومبتات بحث مباشرة لصياغة استراتيجيات مبنية على بيانات محدثة."
+        },
+        auth: {
+          title: "قمرة القيادة الخاصة بك",
+          description: "تابع أفكار الذكاء الاصطناعي، أدر القواعد اليدوية، وراقب نشاط Binance من واجهة آمنة واحدة.",
+          loginTab: "تسجيل الدخول",
+          registerTab: "إنشاء حساب",
+          emailLabel: "البريد الإلكتروني",
+          emailPlaceholder: "name@example.com",
+          passwordLabel: "كلمة المرور",
+          passwordPlaceholder: "أدخل كلمة المرور",
+          nameLabel: "الاسم الكامل",
+          namePlaceholder: "كيف نرحب بك؟",
+          loginCta: "دخول",
+          registerCta: "إنشاء حساب"
+        },
+        dashboard: {
+          title: "مركز تحكم MY1",
+          subtitle: "أدر أفكار الذكاء الاصطناعي، راقب الأوامر المفتوحة، وأشرف على ربط Binance.",
+          welcome: "مرحبًا",
+          logout: "تسجيل الخروج"
+        },
+        api: {
+          title: "ربط مفاتيح Binance",
+          description: "أضف مفاتيح السبوت الخاصة بك لتفعيل المحرك. تبقى المفاتيح مشفرة ويمكنك إزالتها في أي وقت.",
+          statusLabel: "الحالة:",
+          connected: "متصل",
+          disconnected: "غير متصل",
+          keyLabel: "مفتاح API",
+          secretLabel: "سر API",
+          save: "حفظ المفاتيح",
+          remove: "إلغاء الربط",
+          helper: "استخدم مفاتيح تداول Spot بصلاحيات القراءة والتداول فقط."
+        },
+        manual: {
+          title: "قاعدة يدوية",
+          description: "اصنع إستراتيجية شراء عند الانخفاض بأهداف جني ربح مخصصة.",
+          symbolLabel: "الزوج",
+          symbolPlaceholder: "مثال: SOLUSDT",
+          dipLabel: "نسبة الشراء عند الانخفاض %",
+          dipPlaceholder: "2",
+          tpLabel: "نسبة جني الربح %",
+          tpPlaceholder: "2",
+          budgetLabel: "ميزانية الصفقة (USDT)",
+          budgetPlaceholder: "50",
+          add: "إضافة القاعدة",
+          sync: "مزامنة مع المحرك",
+          tableTitle: "القواعد اليدوية",
+          table: {
+            rule: "القاعدة",
+            targets: "الأهداف",
+            budget: "الميزانية",
+            status: "الحالة",
+            actions: "إجراءات"
+          }
+        },
+        ai: {
+          title: "قاعدة بالذكاء الاصطناعي",
+          description: "اطلب إستراتيجية تداول فورية مدعومة ببحث لحظي.",
+          budgetLabel: "ميزانية الذكاء الاصطناعي (USDT)",
+          modelLabel: "النموذج",
+          generate: "توليد بالذكاء الاصطناعي",
+          helper: "يقوم المساعد بالبحث في البيانات المباشرة قبل إرسال القاعدة.",
+          tableTitle: "قواعد الذكاء الاصطناعي",
+          table: {
+            rule: "القاعدة",
+            entry: "سعر الدخول",
+            exit: "هدف الربح",
+            budget: "الميزانية",
+            status: "الحالة",
+            actions: "إجراءات"
+          }
+        },
+        orders: {
+          title: "الأوامر المفتوحة",
+          refresh: "تحديث",
+          table: {
+            symbol: "الزوج",
+            side: "الاتجاه",
+            price: "السعر",
+            qty: "الكمية",
+            type: "النوع",
+            status: "الحالة",
+            updated: "آخر تحديث"
+          },
+          empty: "لا توجد أوامر مفتوحة حاليًا."
+        },
+        manualRules: {
+          buyOnDipLabel: "الشراء عند الانخفاض:",
+          takeProfitLabel: "جني الربح:",
+          empty: "لا توجد قواعد يدوية بعد."
+        },
+        aiRules: {
+          summaryToggle: "عرض ملخص الذكاء الاصطناعي",
+          empty: "لا توجد قواعد ذكاء اصطناعي بعد."
+        },
+        common: {
+          delete: "حذف",
+          confirmDelete: "حذف هذه القاعدة؟",
+          enabled: "مفعل",
+          disabled: "موقوف"
+        },
+        status: {
+          loginSuccess: "تم تسجيل الدخول بنجاح.",
+          registerSuccess: "تم إنشاء الحساب بنجاح.",
+          keysSaved: "تم حفظ مفاتيح API.",
+          keysRemoved: "تم إلغاء الربط.",
+          manualAdded: "تمت إضافة القاعدة اليدوية.",
+          manualSynced: "تمت مزامنة القواعد مع المحرك.",
+          aiGenerated: "تم توليد قاعدة ذكاء اصطناعي بنجاح.",
+          ordersRefreshed: "تم تحديث الأوامر المفتوحة.",
+          ruleActivated: "تم تفعيل القاعدة.",
+          rulePaused: "تم إيقاف القاعدة.",
+          ruleDeleted: "تم حذف القاعدة.",
+          aiBudgetInvalid: "أدخل ميزانية صحيحة للذكاء الاصطناعي."
+        }
+      }
+    };
+
     const state = {
+      language: localStorage.getItem('mybot_language') || 'en',
       token: localStorage.getItem('mybot_token') || '',
       user: null,
       rules: [],
@@ -719,6 +1089,13 @@
       statusTimer: null,
       hasKeys: false,
       isOrdersLoading: false
+    };
+
+    const generateId = () => {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+      }
+      return `rule_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     };
 
     const landing = document.getElementById('landing');
@@ -743,6 +1120,64 @@
     const manualCountEl = document.getElementById('manualCount');
     const aiCountEl = document.getElementById('aiCount');
     const refreshOrdersBtn = document.getElementById('refreshOrders');
+    const languageToggle = document.getElementById('languageToggle');
+
+    function resolveTranslation(lang, key) {
+      const fallback = translations.en;
+      const parts = key.split('.');
+      let target = translations[lang] || translations.en;
+      let fallbackTarget = fallback;
+      for (const part of parts) {
+        target = target && target[part] !== undefined ? target[part] : undefined;
+        fallbackTarget = fallbackTarget && fallbackTarget[part] !== undefined ? fallbackTarget[part] : undefined;
+      }
+      return target !== undefined ? target : fallbackTarget;
+    }
+
+    function translate(key, params) {
+      let value = resolveTranslation(state.language, key);
+      if (typeof value !== 'string') return key;
+      if (params) {
+        value = value.replace(/\{\{(.*?)\}\}/g, (_, token) => {
+          const trimmed = token.trim();
+          return params[trimmed] !== undefined ? params[trimmed] : '';
+        });
+      }
+      return value;
+    }
+
+    let currentOrdersCache = [];
+
+    function applyTranslations() {
+      const lang = state.language === 'ar' ? 'ar' : 'en';
+      document.documentElement.lang = lang;
+      document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+      document.title = resolveTranslation(lang, 'meta.title');
+      languageToggle.textContent = lang === 'ar' ? 'English' : 'عربي';
+
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        const text = resolveTranslation(lang, key);
+        if (typeof text === 'string') {
+          el.textContent = text;
+        }
+      });
+
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        const text = resolveTranslation(lang, key);
+        if (typeof text === 'string') {
+          el.setAttribute('placeholder', text);
+        }
+      });
+
+      const statusText = state.hasKeys ? resolveTranslation(lang, 'api.connected') : resolveTranslation(lang, 'api.disconnected');
+      apiKeysStatus.textContent = statusText;
+      apiKeysStatus.className = `pill ${state.hasKeys ? 'success' : 'danger'}`;
+
+      renderTables();
+      renderOrders(currentOrdersCache);
+    }
 
     function setStatus(message, type = 'info') {
       if (!statusEl) return;
@@ -766,10 +1201,10 @@
       }
     }
 
-    function showDashboard() {
-      landing.classList.add('hidden');
-      authSection.classList.add('hidden');
-      dashboard.classList.remove('hidden');
+    function setLanguage(lang) {
+      state.language = lang === 'ar' ? 'ar' : 'en';
+      localStorage.setItem('mybot_language', state.language);
+      applyTranslations();
     }
 
     function showLanding() {
@@ -778,151 +1213,42 @@
       dashboard.classList.add('hidden');
     }
 
-    async function api(path, options = {}) {
-      const opts = { ...options };
-      opts.headers = { ...(options.headers || {}) };
-      if (opts.body && typeof opts.body === 'object' && !(opts.body instanceof FormData)) {
-        opts.headers['Content-Type'] = opts.headers['Content-Type'] || 'application/json';
-        if (opts.headers['Content-Type'].includes('application/json')) {
-          opts.body = JSON.stringify(opts.body);
-        }
+    function showDashboard() {
+      landing.classList.add('hidden');
+      authSection.classList.add('hidden');
+      dashboard.classList.remove('hidden');
+    }
+
+    async function api(url, options = {}) {
+      const headers = options.headers ? { ...options.headers } : {};
+      if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
+      const opts = {
+        ...options,
+        headers,
+      };
+      if (options.body && typeof options.body === 'object' && !(options.body instanceof FormData)) {
+        headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(options.body);
       }
-      if (state.token) {
-        opts.headers['Authorization'] = `Bearer ${state.token}`;
-      }
-      const res = await fetch(path, opts);
-      const data = await res.json().catch(() => ({}));
-      if (res.status === 401) {
-        handleLogout();
-        throw new Error('يرجى تسجيل الدخول مرة أخرى');
-      }
+      const res = await fetch(url, opts);
       if (!res.ok) {
-        throw new Error(data.error || 'تعذر تنفيذ الطلب');
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || res.statusText || 'Request failed');
       }
-      return data;
+      return res.json().catch(() => ({}));
     }
 
     function extractRules(payload) {
+      const list = [];
       if (Array.isArray(payload)) return payload;
       if (payload && Array.isArray(payload.rules)) return payload.rules;
-      return [];
+      if (payload && Array.isArray(payload.data)) return payload.data;
+      return list;
     }
 
     function renderTables() {
       renderManualRules();
       renderAiRules();
-    }
-
-    function renderManualRules() {
-      const manual = state.rules.filter(r => (r.type || 'manual').toLowerCase() !== 'ai');
-      manualCountEl.textContent = manual.length;
-      manualTableBody.innerHTML = '';
-      if (!manual.length) {
-        const tr = document.createElement('tr');
-        tr.className = 'empty-row';
-        tr.innerHTML = '<td colspan="5">لا توجد قواعد يدوية بعد.</td>';
-        manualTableBody.appendChild(tr);
-        return;
-      }
-      for (const rule of manual) {
-        const tr = document.createElement('tr');
-        if (!rule.enabled) tr.classList.add('is-paused');
-        tr.dataset.id = rule.id;
-        tr.innerHTML = `
-          <td data-label="القاعدة">
-            <div class="symbol">${escapeHtml(rule.symbol)}</div>
-            <div class="muted small">إنشاء ${formatDate(rule.createdAt)}</div>
-          </td>
-          <td data-label="الأهداف">
-            <div>شراء عند الهبوط: <strong>${formatPercent(rule.dipPct)}</strong></div>
-            <div class="muted small">جني ربح: ${formatPercent(rule.tpPct)}</div>
-          </td>
-          <td data-label="الميزانية">${formatCurrency(rule.budgetUSDT)}</td>
-          <td data-label="الحالة">
-            <label class="switch">
-              <input type="checkbox" data-action="toggle" data-id="${rule.id}" ${rule.enabled ? 'checked' : ''}>
-              <span class="slider"></span>
-            </label>
-          </td>
-          <td data-label="إجراءات">
-            <button class="btn-text danger" data-action="delete" data-id="${rule.id}">حذف</button>
-          </td>
-        `;
-        manualTableBody.appendChild(tr);
-      }
-    }
-
-    function renderAiRules() {
-      const aiRules = state.rules.filter(r => (r.type || '').toLowerCase() === 'ai');
-      aiCountEl.textContent = aiRules.length;
-      aiTableBody.innerHTML = '';
-      if (!aiRules.length) {
-        const tr = document.createElement('tr');
-        tr.className = 'empty-row';
-        tr.innerHTML = '<td colspan="6">لا توجد قواعد ذكاء اصطناعي بعد.</td>';
-        aiTableBody.appendChild(tr);
-        return;
-      }
-      for (const rule of aiRules) {
-        const tr = document.createElement('tr');
-        if (!rule.enabled) tr.classList.add('is-paused');
-        tr.dataset.id = rule.id;
-        tr.innerHTML = `
-          <td data-label="القاعدة">
-            <div class="symbol">${escapeHtml(rule.symbol)}</div>
-            <details class="ai-details">
-              <summary>عرض ملخص الذكاء الاصطناعي</summary>
-              <div class="ai-summary">${escapeHtml(rule.aiSummary || '')}</div>
-            </details>
-          </td>
-          <td data-label="دخول">${formatNumber(rule.entryPrice)}</td>
-          <td data-label="هدف">${formatNumber(rule.exitPrice)}</td>
-          <td data-label="الميزانية">${formatCurrency(rule.budgetUSDT)}</td>
-          <td data-label="الحالة">
-            <label class="switch">
-              <input type="checkbox" data-action="toggle" data-id="${rule.id}" ${rule.enabled ? 'checked' : ''}>
-              <span class="slider"></span>
-            </label>
-          </td>
-          <td data-label="إجراءات">
-            <button class="btn-text danger" data-action="delete" data-id="${rule.id}">حذف</button>
-          </td>
-        `;
-        aiTableBody.appendChild(tr);
-      }
-    }
-
-    function renderOrders(rows) {
-      ordersTableBody.innerHTML = '';
-      if (!rows || !rows.length) {
-        const tr = document.createElement('tr');
-        tr.className = 'empty-row';
-        tr.innerHTML = '<td colspan="7">لا توجد أوامر مفتوحة حالياً.</td>';
-        ordersTableBody.appendChild(tr);
-        return;
-      }
-      for (const item of rows) {
-        if (item.error) {
-          const tr = document.createElement('tr');
-          tr.className = 'empty-row';
-          tr.innerHTML = `<td colspan="7">${escapeHtml(item.symbol)}: ${escapeHtml(item.error)}</td>`;
-          ordersTableBody.appendChild(tr);
-          continue;
-        }
-        for (const order of item.orders || []) {
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td data-label="الزوج">${escapeHtml(order.symbol)}</td>
-            <td data-label="الاتجاه"><span class="pill ${order.side === 'BUY' ? 'success' : 'danger'}">${order.side}</span></td>
-            <td data-label="السعر">${formatNumber(order.price)}</td>
-            <td data-label="الكمية">${formatNumber(order.origQty)}</td>
-            <td data-label="النوع">${escapeHtml(order.type)}</td>
-            <td data-label="الحالة">${escapeHtml(order.status)}</td>
-            <td data-label="آخر تحديث">${formatDate(order.updateTime || order.time)}</td>
-          `;
-          ordersTableBody.appendChild(tr);
-        }
-      }
     }
 
     function escapeHtml(str) {
@@ -956,7 +1282,119 @@
       if (!ms) return '-';
       const d = new Date(Number(ms));
       if (Number.isNaN(d.getTime())) return '-';
-      return d.toLocaleString();
+      return d.toLocaleString(state.language === 'ar' ? 'ar-EG' : undefined);
+    }
+
+    function renderManualRules() {
+      const manualRules = state.rules.filter(r => (r.type || '').toLowerCase() === 'manual');
+      manualCountEl.textContent = manualRules.length;
+      manualTableBody.innerHTML = '';
+      if (!manualRules.length) {
+        const tr = document.createElement('tr');
+        tr.className = 'empty-row';
+        tr.innerHTML = `<td colspan="5">${escapeHtml(translate('manualRules.empty'))}</td>`;
+        manualTableBody.appendChild(tr);
+        return;
+      }
+      for (const rule of manualRules) {
+        const tr = document.createElement('tr');
+        if (!rule.enabled) tr.classList.add('is-paused');
+        tr.dataset.id = rule.id;
+        tr.innerHTML = `
+          <td data-label="${escapeHtml(translate('manual.table.rule'))}">
+            <div class="symbol">${escapeHtml(rule.symbol)}</div>
+          </td>
+          <td data-label="${escapeHtml(translate('manual.table.targets'))}">
+            <div>${escapeHtml(translate('manualRules.buyOnDipLabel'))} <strong>${formatPercent(rule.dipPct)}</strong></div>
+            <div class="muted small">${escapeHtml(translate('manualRules.takeProfitLabel'))} ${formatPercent(rule.tpPct)}</div>
+          </td>
+          <td data-label="${escapeHtml(translate('manual.table.budget'))}">${formatCurrency(rule.budgetUSDT)}</td>
+          <td data-label="${escapeHtml(translate('manual.table.status'))}">
+            <label class="switch">
+              <input type="checkbox" data-action="toggle" data-id="${rule.id}" ${rule.enabled ? 'checked' : ''}>
+              <span class="slider"></span>
+            </label>
+          </td>
+          <td data-label="${escapeHtml(translate('manual.table.actions'))}">
+            <button class="btn-text danger" data-action="delete" data-id="${rule.id}">${escapeHtml(translate('common.delete'))}</button>
+          </td>
+        `;
+        manualTableBody.appendChild(tr);
+      }
+    }
+
+    function renderAiRules() {
+      const aiRules = state.rules.filter(r => (r.type || '').toLowerCase() === 'ai');
+      aiCountEl.textContent = aiRules.length;
+      aiTableBody.innerHTML = '';
+      if (!aiRules.length) {
+        const tr = document.createElement('tr');
+        tr.className = 'empty-row';
+        tr.innerHTML = `<td colspan="6">${escapeHtml(translate('aiRules.empty'))}</td>`;
+        aiTableBody.appendChild(tr);
+        return;
+      }
+      for (const rule of aiRules) {
+        const tr = document.createElement('tr');
+        if (!rule.enabled) tr.classList.add('is-paused');
+        tr.dataset.id = rule.id;
+        tr.innerHTML = `
+          <td data-label="${escapeHtml(translate('ai.table.rule'))}">
+            <div class="symbol">${escapeHtml(rule.symbol)}</div>
+            <details class="ai-details">
+              <summary>${escapeHtml(translate('aiRules.summaryToggle'))}</summary>
+              <div class="ai-summary">${escapeHtml(rule.aiSummary || '')}</div>
+            </details>
+          </td>
+          <td data-label="${escapeHtml(translate('ai.table.entry'))}">${formatNumber(rule.entryPrice)}</td>
+          <td data-label="${escapeHtml(translate('ai.table.exit'))}">${formatNumber(rule.exitPrice)}</td>
+          <td data-label="${escapeHtml(translate('ai.table.budget'))}">${formatCurrency(rule.budgetUSDT)}</td>
+          <td data-label="${escapeHtml(translate('ai.table.status'))}">
+            <label class="switch">
+              <input type="checkbox" data-action="toggle" data-id="${rule.id}" ${rule.enabled ? 'checked' : ''}>
+              <span class="slider"></span>
+            </label>
+          </td>
+          <td data-label="${escapeHtml(translate('ai.table.actions'))}">
+            <button class="btn-text danger" data-action="delete" data-id="${rule.id}">${escapeHtml(translate('common.delete'))}</button>
+          </td>
+        `;
+        aiTableBody.appendChild(tr);
+      }
+    }
+
+    function renderOrders(rows) {
+      currentOrdersCache = Array.isArray(rows) ? rows : [];
+      ordersTableBody.innerHTML = '';
+      if (!currentOrdersCache.length) {
+        const tr = document.createElement('tr');
+        tr.className = 'empty-row';
+        tr.innerHTML = `<td colspan="7">${escapeHtml(translate('orders.empty'))}</td>`;
+        ordersTableBody.appendChild(tr);
+        return;
+      }
+      for (const item of currentOrdersCache) {
+        if (item.error) {
+          const tr = document.createElement('tr');
+          tr.className = 'empty-row';
+          tr.innerHTML = `<td colspan="7">${escapeHtml(item.symbol)}: ${escapeHtml(item.error)}</td>`;
+          ordersTableBody.appendChild(tr);
+          continue;
+        }
+        for (const order of item.orders || []) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td data-label="${escapeHtml(translate('orders.table.symbol'))}">${escapeHtml(order.symbol)}</td>
+            <td data-label="${escapeHtml(translate('orders.table.side'))}"><span class="pill ${order.side === 'BUY' ? 'success' : 'danger'}">${order.side}</span></td>
+            <td data-label="${escapeHtml(translate('orders.table.price'))}">${formatNumber(order.price)}</td>
+            <td data-label="${escapeHtml(translate('orders.table.qty'))}">${formatNumber(order.origQty)}</td>
+            <td data-label="${escapeHtml(translate('orders.table.type'))}">${escapeHtml(order.type)}</td>
+            <td data-label="${escapeHtml(translate('orders.table.status'))}">${escapeHtml(order.status)}</td>
+            <td data-label="${escapeHtml(translate('orders.table.updated'))}">${formatDate(order.updateTime || order.time)}</td>
+          `;
+          ordersTableBody.appendChild(tr);
+        }
+      }
     }
 
     async function handleLogin(event) {
@@ -972,11 +1410,11 @@
           body: JSON.stringify(payload)
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || 'فشل تسجيل الدخول');
+        if (!res.ok) throw new Error(data.error || 'Login failed');
         setToken(data.token);
         state.user = data.user;
         await bootstrapDashboard();
-        setStatus('تم تسجيل الدخول بنجاح', 'success');
+        setStatus(translate('status.loginSuccess'), 'success');
       } catch (err) {
         console.error('login error', err);
         setStatus(err.message, 'error');
@@ -997,11 +1435,11 @@
           body: JSON.stringify(payload)
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || 'فشل إنشاء الحساب');
+        if (!res.ok) throw new Error(data.error || 'Registration failed');
         setToken(data.token);
         state.user = data.user;
         await bootstrapDashboard();
-        setStatus('تم إنشاء الحساب بنجاح', 'success');
+        setStatus(translate('status.registerSuccess'), 'success');
       } catch (err) {
         console.error('register error', err);
         setStatus(err.message, 'error');
@@ -1027,7 +1465,8 @@
       const data = await api('/api/auth/me');
       state.user = data.user;
       state.hasKeys = Boolean(data.hasApiKeys);
-      welcomeName.textContent = state.user?.name ? `مرحباً ${state.user.name}` : 'مرحباً';
+      const greeting = state.user?.name ? `${translate('dashboard.welcome')} ${state.user.name}` : translate('dashboard.welcome');
+      welcomeName.textContent = greeting;
       updateApiKeysStatus();
     }
 
@@ -1050,7 +1489,7 @@
       try {
         const data = await api('/api/orders');
         renderOrders(Array.isArray(data) ? data : []);
-        if (!silent) setStatus('تم تحديث الأوامر المفتوحة', 'info');
+        if (!silent) setStatus(translate('status.ordersRefreshed'), 'info');
       } catch (err) {
         renderOrders([]);
         setStatus(err.message, 'error');
@@ -1072,7 +1511,8 @@
 
     function updateApiKeysStatus() {
       if (!apiKeysStatus) return;
-      apiKeysStatus.textContent = state.hasKeys ? 'متصل' : 'غير متصل';
+      const label = state.hasKeys ? 'api.connected' : 'api.disconnected';
+      apiKeysStatus.textContent = translate(label);
       apiKeysStatus.className = `pill ${state.hasKeys ? 'success' : 'danger'}`;
     }
 
@@ -1086,47 +1526,40 @@
         await api('/api/users/api-keys', { method: 'POST', body: payload });
         state.hasKeys = true;
         updateApiKeysStatus();
-        setStatus('تم حفظ مفاتيح Binance بنجاح', 'success');
-        apiKeysForm.reset();
+        setStatus(translate('status.keysSaved'), 'success');
       } catch (err) {
-        console.error('api keys error', err);
+        console.error('api key save error', err);
         setStatus(err.message, 'error');
       }
     }
 
     async function removeApiKeys() {
-      if (!confirm('هل أنت متأكد من إزالة الربط؟')) return;
       try {
         await api('/api/users/api-keys', { method: 'DELETE' });
         state.hasKeys = false;
         updateApiKeysStatus();
-        setStatus('تمت إزالة مفاتيح Binance', 'info');
+        setStatus(translate('status.keysRemoved'), 'info');
       } catch (err) {
+        console.error('remove keys error', err);
         setStatus(err.message, 'error');
       }
     }
 
     async function addManualRule(event) {
       event.preventDefault();
-      const symbol = document.getElementById('symbol').value.trim().toUpperCase();
-      const dip = Number(document.getElementById('dip').value);
-      const tp = Number(document.getElementById('tp').value);
-      const budget = Number(document.getElementById('budget').value);
-      if (!symbol) return setStatus('يجب إدخال الزوج', 'error');
-      if (!(dip > 0)) return setStatus('أدخل نسبة هبوط صحيحة', 'error');
-      if (!(tp > 0)) return setStatus('أدخل نسبة جني ربح صحيحة', 'error');
-      if (!(budget > 0)) return setStatus('أدخل ميزانية صحيحة', 'error');
-      const newRule = {
-        symbol,
-        dipPct: dip,
-        tpPct: tp,
-        budgetUSDT: budget,
-        enabled: true,
+      const rule = {
+        id: generateId(),
         type: 'manual',
+        symbol: document.getElementById('symbol').value.trim().toUpperCase(),
+        dipPct: Number(document.getElementById('dip').value),
+        tpPct: Number(document.getElementById('tp').value),
+        budgetUSDT: Number(document.getElementById('budget').value),
+        enabled: true,
         createdAt: Date.now()
       };
+      const next = [...state.rules, rule];
       try {
-        await persistAll([...state.rules, newRule], { text: `تمت إضافة قاعدة ${symbol}`, type: 'success' });
+        await persistAll(next, { text: translate('status.manualAdded'), type: 'success' });
         manualForm.reset();
       } catch (err) {
         setStatus(err.message, 'error');
@@ -1135,7 +1568,10 @@
 
     async function syncRules() {
       try {
-        await persistAll(state.rules, { text: 'تمت مزامنة القواعد مع المحرك', type: 'success' });
+        const response = await api('/api/rules/sync', { method: 'POST' });
+        state.rules = extractRules(response);
+        renderTables();
+        setStatus(translate('status.manualSynced'), 'info');
       } catch (err) {
         setStatus(err.message, 'error');
       }
@@ -1144,7 +1580,7 @@
     async function toggleRule(id, enabled) {
       const next = state.rules.map(r => r.id === id ? { ...r, enabled } : r);
       try {
-        await persistAll(next, { text: enabled ? 'تم تفعيل القاعدة' : 'تم إيقاف القاعدة', type: 'info' });
+        await persistAll(next, { text: translate(enabled ? 'status.ruleActivated' : 'status.rulePaused'), type: 'info' });
       } catch (err) {
         setStatus(err.message, 'error');
       }
@@ -1152,12 +1588,12 @@
 
     async function deleteRule(id) {
       if (!id) return;
-      if (!confirm('حذف هذه القاعدة؟')) return;
+      if (!confirm(translate('common.confirmDelete'))) return;
       try {
         const data = await api(`/api/rules/${id}`, { method: 'DELETE' });
         state.rules = extractRules(data);
         renderTables();
-        setStatus('تم حذف القاعدة', 'info');
+        setStatus(translate('status.ruleDeleted'), 'info');
       } catch (err) {
         setStatus(err.message, 'error');
       }
@@ -1167,20 +1603,23 @@
       event.preventDefault();
       if (aiGenerateBtn.dataset.loading === 'true') return;
       const budget = Number(document.getElementById('aiBudget').value);
-      if (!(budget > 0)) return setStatus('أدخل ميزانية صحيحة للذكاء الاصطناعي', 'error');
+      if (!(budget > 0)) {
+        setStatus(translate('status.aiBudgetInvalid'), 'error');
+        return;
+      }
       aiGenerateBtn.dataset.loading = 'true';
       aiGenerateBtn.disabled = true;
       try {
         const data = await api('/api/ai-role', {
           method: 'POST',
-          body: { budgetUSDT: budget }
+          body: { budgetUSDT: budget, locale: state.language }
         });
         await loadRules();
         if (data && data.rule && data.rule.aiModel) {
           const modelInput = document.getElementById('aiModel');
           if (modelInput) modelInput.value = data.rule.aiModel;
         }
-        setStatus('تم توليد قاعدة ذكاء اصطناعي بنجاح', 'success');
+        setStatus(translate('status.aiGenerated'), 'success');
         await loadOrders(true);
       } catch (err) {
         console.error('ai error', err);
@@ -1229,7 +1668,8 @@
     });
 
     document.querySelectorAll('[data-scroll-to-auth]').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', event => {
+        event.preventDefault();
         window.scrollTo({ top: authSection.offsetTop - 40, behavior: 'smooth' });
       });
     });
@@ -1243,10 +1683,14 @@
     syncRulesBtn.addEventListener('click', syncRules);
     aiForm.addEventListener('submit', generateAiRule);
     refreshOrdersBtn.addEventListener('click', () => loadOrders());
+    languageToggle.addEventListener('click', () => {
+      setLanguage(state.language === 'ar' ? 'en' : 'ar');
+    });
 
     initAuthTabs();
 
     async function init() {
+      applyTranslations();
       renderTables();
       renderOrders([]);
       if (state.token) {

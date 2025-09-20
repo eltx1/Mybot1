@@ -537,82 +537,114 @@ app.get("/api/orders", authRequired(handleAsync(async (req, res) => {
 })));
 
 function parseAiRoleResponse(text) {
-  if (!text) throw new Error("Empty response from AI");
-  const cleaned = text.replace(/\r/g, "").trim();
-  const lines = cleaned.split(/\n+/).map(l => l.trim()).filter(Boolean);
-  let symbol = "";
-  let entryPrice = null;
-  let exitPrice = null;
+  if (!text) throw new Error("AI response was empty.");
+  const cleaned = text.replace(/```json|```/gi, "").replace(/\r/g, "").trim();
+  if (!cleaned) throw new Error("AI response was empty.");
 
-  const parseNumberToken = token => {
-    if (!token) return NaN;
-    let str = String(token).trim();
-    str = str.replace(/\s+/g, "");
-    str = str.replace(/[\u066c]/g, ".");
-    const hasComma = str.includes(",");
-    const hasDot = str.includes(".");
-    if (hasComma && hasDot) {
-      str = str.replace(/,/g, "");
-    } else if (hasComma && !hasDot) {
-      str = str.replace(/,/g, ".");
-    } else {
-      str = str.replace(/,/g, "");
-    }
-    str = str.replace(/[^0-9.]/g, "");
+  const parseNumeric = value => {
+    if (value === null || value === undefined) return NaN;
+    if (typeof value === "number") return Number.isFinite(value) ? value : NaN;
+    let str = String(value).trim();
+    if (!str) return NaN;
+    str = str.replace(/[\s,_]/g, "");
+    str = str.replace(/[\u066b\u066c]/g, ".");
     const num = Number(str);
     return Number.isFinite(num) ? num : NaN;
   };
-  const numberFromLine = line => {
-    const match = line.match(/([0-9]+(?:[.,\u066c][0-9]+)?)/);
-    if (!match) return null;
-    const n = parseNumberToken(match[1]);
-    return Number.isFinite(n) ? n : null;
+
+  let symbol = "";
+  let entryPrice = NaN;
+  let exitPrice = NaN;
+  let summary = "";
+
+  try {
+    const parsedJson = JSON.parse(cleaned);
+    if (parsedJson && typeof parsedJson === "object" && !Array.isArray(parsedJson)) {
+      if (parsedJson.error) {
+        throw new Error(`AI error: ${parsedJson.error}`);
+      }
+      const candidateSymbol = parsedJson.symbol || parsedJson.pair || parsedJson.ticker;
+      if (candidateSymbol) {
+        symbol = String(candidateSymbol).toUpperCase().replace(/[^A-Z0-9]/g, "");
+      }
+      const candidateEntry = parsedJson.entryPrice ?? parsedJson.entry ?? parsedJson.buy;
+      const candidateExit = parsedJson.exitPrice ?? parsedJson.takeProfit ?? parsedJson.sell;
+      entryPrice = parseNumeric(candidateEntry);
+      exitPrice = parseNumeric(candidateExit);
+      if (typeof parsedJson.summary === "string") {
+        summary = parsedJson.summary.trim();
+      } else if (typeof parsedJson.reason === "string") {
+        summary = parsedJson.reason.trim();
+      }
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("AI error:")) {
+      throw err;
+    }
+  }
+
+  const parseFallback = () => {
+    const lines = cleaned.split(/\n+/).map(l => l.trim()).filter(Boolean);
+    const parseNumberToken = token => {
+      const parsed = parseNumeric(token);
+      return Number.isFinite(parsed) ? parsed : NaN;
+    };
+    const numberFromLine = line => {
+      const match = line.match(/([0-9]+(?:[.,\u066c][0-9]+)?)/);
+      if (!match) return null;
+      const n = parseNumberToken(match[1]);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    for (const line of lines) {
+      const lower = line.toLowerCase();
+      if (!symbol && (lower.includes("pair") || lower.includes("symbol") || lower.includes("زوج"))) {
+        const symMatch = line.match(/([A-Z]{3,}(?:USDT|USDC|BUSD|BTC|ETH)?)/);
+        if (symMatch) symbol = symMatch[1].replace(/[^A-Z0-9]/gi, "").toUpperCase();
+      }
+      if (!Number.isFinite(entryPrice) && (lower.includes("entry") || lower.includes("limit") || lower.includes("دخول"))) {
+        const num = numberFromLine(line);
+        if (Number.isFinite(num)) entryPrice = num;
+      }
+      if (!Number.isFinite(exitPrice) && (lower.includes("take") || lower.includes("profit") || lower.includes("exit") || lower.includes("هدف") || lower.includes("ربح"))) {
+        const num = numberFromLine(line);
+        if (Number.isFinite(num)) exitPrice = num;
+      }
+    }
+
+    if (!symbol) {
+      const fallback = cleaned.match(/([A-Z]{3,}(?:USDT|USDC|BUSD|BTC|ETH)?)/);
+      if (fallback) symbol = fallback[1].replace(/[^A-Z0-9]/gi, "").toUpperCase();
+    }
+
+    const numbers = cleaned.match(/([0-9]+(?:[.,\u066c][0-9]+)?)/g) || [];
+    if (!Number.isFinite(entryPrice) && numbers.length >= 1) {
+      const parsed = parseNumberToken(numbers[0]);
+      if (Number.isFinite(parsed)) entryPrice = parsed;
+    }
+    if (!Number.isFinite(exitPrice) && numbers.length >= 2) {
+      const parsed = parseNumberToken(numbers[numbers.length - 1]);
+      if (Number.isFinite(parsed)) exitPrice = parsed;
+    }
   };
 
-  for (const line of lines) {
-    const lower = line.toLowerCase();
-    if (!symbol && (lower.includes("زوج") || lower.includes("pair") || lower.includes("symbol"))) {
-      const symMatch = line.match(/([A-Z]{3,}(?:USDT|USDC|BUSD|BTC|ETH)?)/);
-      if (symMatch) symbol = symMatch[1].replace(/[^A-Z0-9]/gi, "").toUpperCase();
-    }
-    if (!entryPrice && (lower.includes("دخول") || lower.includes("entry") || lower.includes("limit"))) {
-      const num = numberFromLine(line);
-      if (num) entryPrice = num;
-    }
-    if (!exitPrice && (lower.includes("خروج") || lower.includes("take") || lower.includes("ربح") || lower.includes("هدف"))) {
-      const num = numberFromLine(line);
-      if (num) exitPrice = num;
-    }
-  }
-
-  if (!symbol) {
-    const fallback = cleaned.match(/([A-Z]{3,}(?:USDT|USDC|BUSD|BTC|ETH)?)/);
-    if (fallback) symbol = fallback[1].replace(/[^A-Z0-9]/gi, "").toUpperCase();
-  }
-
-  const numbers = cleaned.match(/([0-9]+(?:[.,\u066c][0-9]+)?)/g) || [];
-  if (!entryPrice && numbers.length >= 1) {
-    const parsed = parseNumberToken(numbers[0]);
-    if (Number.isFinite(parsed)) entryPrice = parsed;
-  }
-  if (!exitPrice && numbers.length >= 2) {
-    const parsed = parseNumberToken(numbers[numbers.length - 1]);
-    if (Number.isFinite(parsed)) exitPrice = parsed;
+  if (!symbol || !Number.isFinite(entryPrice) || !Number.isFinite(exitPrice)) {
+    parseFallback();
   }
 
   if (!symbol || !(entryPrice > 0) || !(exitPrice > 0)) {
-    throw new Error("تعذر قراءة الزوج أو نقاط الدخول/الخروج من رد الذكاء الاصطناعي.");
+    throw new Error("Unable to read the trading pair or price targets from the AI response.");
   }
 
   if (!symbol.endsWith("USDT") && symbol.includes("/")) {
-    symbol = symbol.replace("/", "");
+    symbol = symbol.replace(/\//g, "");
   }
 
   if (symbol.length < 6) {
-    throw new Error("الزوج العائد من الذكاء الاصطناعي غير صالح للتداول.");
+    throw new Error("The trading pair suggested by the AI is not valid for spot trading.");
   }
 
-  return { symbol, entryPrice, exitPrice, raw: cleaned };
+  return { symbol, entryPrice, exitPrice, raw: cleaned, summary: summary || undefined };
 }
 
 app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
@@ -623,11 +655,53 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
 
   const model = (req.body && req.body.model) || DEFAULT_AI_MODEL;
   const budget = Number(req.body && req.body.budgetUSDT !== undefined ? req.body.budgetUSDT : DEFAULT_AI_BUDGET);
+  const locale = typeof req.body?.locale === "string" ? req.body.locale.toLowerCase() : "en";
   if (!(budget > 0)) {
     return res.status(400).json({ error: "budgetUSDT must be a positive number" });
   }
 
-  const prompt = "شات جي بي تي قم بتحليل سوق الكريبتو اليوم و الان وتحليل اهم ٧ عملات كريبتو سيوله اليوم والان وتحليل اخبار الكريبتو والاخبار الموثره علي الكريبتو اليوم والان - ثم قم بصنع قاعده شراء وبيع علي بينانس اسبوت بعد تفكير عميق جدا في كل المعطيات التي قمت بتحليلها اليوم علي ان ترسل الرد للبوت يحتوي مباشره وفقط علي :\nالزوج للتداول مثال BTCUSDT\nنقطه الدخول ليميت ميكر\nنقطه الخروج لاخذ الربح ليميت ميكر \nبدون إيقاف خساره";
+  let marketSnapshot = [];
+  try {
+    const response = await fetch("https://api.binance.com/api/v3/ticker/24hr");
+    if (response.ok) {
+      const payload = await response.json();
+      if (Array.isArray(payload)) {
+        marketSnapshot = payload
+          .filter(item => typeof item?.symbol === "string" && item.symbol.endsWith("USDT"))
+          .map(item => ({
+            symbol: item.symbol,
+            lastPrice: Number(item.lastPrice || item.last || item.price || 0),
+            priceChangePercent: Number(item.priceChangePercent || 0),
+            highPrice: Number(item.highPrice || 0),
+            lowPrice: Number(item.lowPrice || 0),
+            volume: Number(item.volume || 0),
+            quoteVolume: Number(item.quoteVolume || 0)
+          }))
+          .filter(item => Number.isFinite(item.lastPrice) && item.lastPrice > 0)
+          .sort((a, b) => (b.quoteVolume || 0) - (a.quoteVolume || 0))
+          .slice(0, 12);
+      }
+    }
+  } catch (err) {
+    console.error("Failed to fetch Binance market snapshot", err);
+    marketSnapshot = [];
+  }
+
+  const snapshotText = JSON.stringify(marketSnapshot, null, 2);
+  const summaryLanguage = locale === "ar" ? "Arabic" : "English";
+  const userPrompt = [
+    `You have ${budget} USDT to allocate to a single Binance spot trade.`,
+    "Use the following live market snapshot (JSON) as your primary data source:",
+    snapshotText,
+    "Before finalizing the trade idea you MUST research the latest public crypto headlines online and factor any breaking news into your reasoning.",
+    "Respond ONLY with minified JSON using this schema: {\"symbol\":\"PAIR\",\"entryPrice\":number,\"exitPrice\":number,\"summary\":\"...\"}.",
+    "Rules:",
+    "1. Choose a symbol from the snapshot with healthy liquidity.",
+    "2. entryPrice must stay within 3% of the snapshot lastPrice and represent a realistic limit maker entry.",
+    "3. exitPrice must be higher than entryPrice by 0.5% - 5% unless news justifies a different range.",
+    "4. Mention the supporting data and news you considered inside the summary.",
+    `5. Write the summary field in ${summaryLanguage}.`
+  ].join("\n");
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -637,15 +711,15 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
     },
     body: JSON.stringify({
       model,
-      temperature: 0.2,
+      temperature: 0.3,
       messages: [
         {
           role: "system",
-          content: "You are a crypto trading analyst. Reply only with the trading pair, entry limit maker price, and take-profit limit maker price as requested. Do not include stop losses or extra commentary."
+          content: "You are an elite crypto trading analyst with live data access. Conduct up-to-date market research before responding. Think step-by-step privately and return only the JSON result requested."
         },
         {
           role: "user",
-          content: prompt
+          content: userPrompt
         }
       ]
     })
@@ -660,6 +734,50 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
   const text = payload?.choices?.[0]?.message?.content || "";
   const parsed = parseAiRoleResponse(text);
 
+  const snapshotMap = new Map(marketSnapshot.map(item => [item.symbol, item]));
+  let referencePrice = snapshotMap.get(parsed.symbol)?.lastPrice;
+  if (!Number.isFinite(referencePrice)) {
+    try {
+      const tickerRes = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${parsed.symbol}`);
+      if (tickerRes.ok) {
+        const tickerPayload = await tickerRes.json();
+        const maybePrice = Number(tickerPayload?.price);
+        if (Number.isFinite(maybePrice) && maybePrice > 0) {
+          referencePrice = maybePrice;
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch live ticker for", parsed.symbol, err);
+    }
+  }
+
+  if (Number.isFinite(referencePrice) && referencePrice > 0) {
+    const normalise = (value, fallback) => {
+      if (!Number.isFinite(value) || value <= 0) return fallback;
+      return Number(value);
+    };
+    let entry = normalise(parsed.entryPrice, referencePrice * 0.995);
+    let exit = normalise(parsed.exitPrice, entry * 1.015);
+    const entryDiff = Math.abs(entry - referencePrice) / referencePrice;
+    if (!Number.isFinite(entry) || entryDiff > 0.05) {
+      entry = Number((referencePrice * 0.995).toFixed(6));
+    }
+    if (!Number.isFinite(exit) || exit <= entry) {
+      exit = Number((entry * 1.015).toFixed(6));
+    } else {
+      let delta = (exit - entry) / entry;
+      if (delta < 0.003) {
+        exit = Number((entry * 1.008).toFixed(6));
+      } else if (delta > 0.08) {
+        exit = Number((entry * 1.05).toFixed(6));
+      } else {
+        exit = Number(exit.toFixed(6));
+      }
+    }
+    parsed.entryPrice = Number(entry.toFixed(6));
+    parsed.exitPrice = Number(exit.toFixed(6));
+  }
+
   const current = await readRules(req.user.id);
   const aiRule = {
     id: randomUUID(),
@@ -670,7 +788,15 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
     budgetUSDT: budget,
     enabled: true,
     createdAt: Date.now(),
-    aiSummary: parsed.raw,
+    aiSummary: (() => {
+      const parts = [];
+      if (parsed.summary) parts.push(parsed.summary);
+      else parts.push(parsed.raw);
+      if (Number.isFinite(referencePrice) && referencePrice > 0) {
+        parts.push(`Live price check (${parsed.symbol}): ${referencePrice} USDT at ${new Date().toISOString()}. Entry ${parsed.entryPrice}, take-profit ${parsed.exitPrice}.`);
+      }
+      return parts.join("\n\n");
+    })(),
     aiModel: model
   };
 
