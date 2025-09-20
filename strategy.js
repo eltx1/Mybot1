@@ -27,6 +27,21 @@ function makeClientOrderId(rule, side) {
   return `MY1${tag}${base}`;
 }
 
+function parseBinanceError(err) {
+  if (!err) return { code: undefined, message: "" };
+  const raw = typeof err.message === "string" ? err.message : String(err);
+  let message = raw;
+  let code;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      if (parsed.msg) message = String(parsed.msg);
+      if (parsed.code !== undefined) code = parsed.code;
+    }
+  } catch {}
+  return { code, message: typeof message === "string" ? message.trim() : "" };
+}
+
 function pickOrderForRule(orders, rule, side) {
   const targetId = makeClientOrderId(rule, side);
   let order = orders.find(o => o.clientOrderId === targetId);
@@ -57,7 +72,7 @@ async function getFilters(binance, symbol) {
   };
 }
 
-async function processRule({ binance, rule, caches, lastTradeId, userKey }) {
+async function processRule({ binance, rule, caches, lastTradeId, userKey, hooks }) {
   const symbol = (rule.symbol || "").toUpperCase();
   if (!symbol) return;
   const enabled = rule.enabled !== false;
@@ -65,6 +80,24 @@ async function processRule({ binance, rule, caches, lastTradeId, userKey }) {
 
   const type = String(rule.type || "manual").toLowerCase() === "ai" ? "ai" : "manual";
   const ruleKey = `${userKey}:${rule.id || `${type}:${symbol}`}`;
+
+  const numericUserId = Number(userKey);
+  const reportIssue = async (code, message) => {
+    if (!hooks?.reportRuleIssue || !rule?.id || !Number.isFinite(numericUserId) || !message) return;
+    try {
+      await hooks.reportRuleIssue({ userId: numericUserId, ruleId: rule.id, code, message });
+    } catch (err) {
+      console.error(`[ENGINE] failed to report issue for ${symbol}:`, err.message);
+    }
+  };
+  const clearIssue = async () => {
+    if (!hooks?.clearRuleIssue || !rule?.id || !Number.isFinite(numericUserId)) return;
+    try {
+      await hooks.clearRuleIssue({ userId: numericUserId, ruleId: rule.id });
+    } catch (err) {
+      console.error(`[ENGINE] failed to clear issue for ${symbol}:`, err.message);
+    }
+  };
 
   if (!caches.filter[symbol]) {
     try {
@@ -122,13 +155,23 @@ async function processRule({ binance, rule, caches, lastTradeId, userKey }) {
   const sellId = makeClientOrderId(rule, "SELL");
 
   let buyOrder = pickOrderForRule(orders, rule, "BUY");
+  if (buyOrder) {
+    await clearIssue();
+  }
 
   if (!buyOrder) {
     try {
       await binance.placeLimit(symbol, "BUY", qty, buyTarget, { makerOnly: MAKER_ONLY, clientOrderId: buyId });
       caches.orders[symbol] = null;
+      await clearIssue();
     } catch (err) {
       console.error(`[ENGINE] place BUY failed for ${symbol}:`, err.message);
+      const details = parseBinanceError(err);
+      const lower = (details.message || "").toLowerCase();
+      if (lower.includes("not whitelisted")) {
+        const friendly = `Binance rejected ${symbol} because it is not enabled for your API key. Enable the pair in your Binance API restrictions and try again.`;
+        await reportIssue("symbol_not_whitelisted", friendly);
+      }
     }
     return;
   }
@@ -141,6 +184,7 @@ async function processRule({ binance, rule, caches, lastTradeId, userKey }) {
     try {
       await binance.placeLimit(symbol, "BUY", qty, buyTarget, { makerOnly: MAKER_ONLY, clientOrderId: buyId });
       caches.orders[symbol] = null;
+      await clearIssue();
     } catch (err) {
       console.error(`[ENGINE] replace BUY failed for ${symbol}:`, err.message);
     }
@@ -185,13 +229,14 @@ async function processRule({ binance, rule, caches, lastTradeId, userKey }) {
     try {
       await binance.placeLimit(symbol, "SELL", filledQty, sellPrice, { makerOnly: MAKER_ONLY, clientOrderId: sellId });
       caches.orders[symbol] = null;
+      await clearIssue();
     } catch (err) {
       console.error(`[ENGINE] place SELL failed for ${symbol}:`, err.message);
     }
   }
 }
 
-async function processSnapshot(snapshot, lastTradeId) {
+async function processSnapshot(snapshot, lastTradeId, hooks) {
   const { userId, binance, rules } = snapshot;
   if (!binance || !Array.isArray(rules) || !rules.length) return;
 
@@ -205,14 +250,14 @@ async function processSnapshot(snapshot, lastTradeId) {
 
   for (const rule of rules) {
     try {
-      await processRule({ binance, rule: rule || {}, caches, lastTradeId, userKey });
+      await processRule({ binance, rule: rule || {}, caches, lastTradeId, userKey, hooks });
     } catch (err) {
       console.error(`[ENGINE] unexpected error for rule ${rule?.id || "unknown"}:`, err.message);
     }
   }
 }
 
-export function runEngine(getSnapshots) {
+export function runEngine(getSnapshots, hooks = {}) {
   const lastTradeId = new Map();
 
   async function loop() {
@@ -221,7 +266,7 @@ export function runEngine(getSnapshots) {
         const snapshots = await getSnapshots();
         if (Array.isArray(snapshots)) {
           for (const snapshot of snapshots) {
-            await processSnapshot(snapshot || {}, lastTradeId);
+            await processSnapshot(snapshot || {}, lastTradeId, hooks);
           }
         }
       } catch (err) {

@@ -141,6 +141,18 @@ async function initDb() {
         CONSTRAINT fk_rules_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS rule_errors (
+        rule_id VARCHAR(64) PRIMARY KEY,
+        user_id INT NOT NULL,
+        code VARCHAR(64) DEFAULT NULL,
+        message TEXT NOT NULL,
+        created_at BIGINT NOT NULL,
+        CONSTRAINT fk_rule_errors_rule FOREIGN KEY (rule_id) REFERENCES rules(id) ON DELETE CASCADE,
+        INDEX idx_rule_errors_user (user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
   } finally {
     conn.release();
   }
@@ -297,12 +309,22 @@ function mapRuleRow(row) {
     enabled: row.enabled === 1 || row.enabled === true,
     aiSummary: row.ai_summary || undefined,
     aiModel: row.ai_model || undefined,
-    createdAt: Number(row.created_at) || Date.now()
+    createdAt: Number(row.created_at) || Date.now(),
+    lastError: row.last_error || undefined,
+    lastErrorCode: row.last_error_code || undefined,
+    lastErrorAt: row.last_error_at !== null && row.last_error_at !== undefined ? Number(row.last_error_at) : undefined
   };
 }
 
 async function readRules(userId) {
-  const [rows] = await pool.query("SELECT * FROM rules WHERE user_id = ? ORDER BY created_at ASC", [userId]);
+  const [rows] = await pool.query(
+    `SELECT r.*, e.message AS last_error, e.code AS last_error_code, e.created_at AS last_error_at
+     FROM rules r
+     LEFT JOIN rule_errors e ON e.rule_id = r.id AND e.user_id = r.user_id
+     WHERE r.user_id = ?
+     ORDER BY r.created_at ASC`,
+    [userId]
+  );
   return rows.map(mapRuleRow);
 }
 
@@ -368,6 +390,23 @@ async function writeRules(userId, rules) {
 
 async function removeRule(userId, id) {
   await pool.query("DELETE FROM rules WHERE user_id = ? AND id = ?", [userId, id]);
+}
+
+async function upsertRuleError({ userId, ruleId, code, message }) {
+  if (!userId || !ruleId) return;
+  const text = typeof message === "string" ? message.trim() : String(message || "").trim();
+  if (!text) return;
+  await pool.query(
+    `INSERT INTO rule_errors (rule_id, user_id, code, message, created_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE code = VALUES(code), message = VALUES(message), created_at = VALUES(created_at)`,
+    [ruleId, userId, code || null, text, Date.now()]
+  );
+}
+
+async function clearRuleError(userId, ruleId) {
+  if (!userId || !ruleId) return;
+  await pool.query("DELETE FROM rule_errors WHERE user_id = ? AND rule_id = ?", [userId, ruleId]);
 }
 
 function signToken(user) {
@@ -495,6 +534,20 @@ app.delete("/api/users/api-keys", authRequired(handleAsync(async (req, res) => {
 app.get("/api/rules", authRequired(handleAsync(async (req, res) => {
   const rules = await readRules(req.user.id);
   res.json({ rules });
+})));
+
+app.get("/api/rules/errors", authRequired(handleAsync(async (req, res) => {
+  const [rows] = await pool.query(
+    "SELECT rule_id, code, message, created_at FROM rule_errors WHERE user_id = ?",
+    [req.user.id]
+  );
+  const errors = rows.map(row => ({
+    id: row.rule_id,
+    code: row.code || undefined,
+    message: row.message || "",
+    createdAt: row.created_at !== null && row.created_at !== undefined ? Number(row.created_at) : Date.now()
+  }));
+  res.json({ errors });
 })));
 
 app.post("/api/rules", authRequired(handleAsync(async (req, res) => {
@@ -690,7 +743,7 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
   const snapshotText = JSON.stringify(marketSnapshot, null, 2);
   const summaryLanguage = locale === "ar" ? "Arabic" : "English";
   const userPrompt = [
-    `You have ${budget} USDT to allocate to a single Binance spot trade.`,
+    `You have ${budget} USDT to allocate to a single Binance spot trade that should complete within 24 hours.`,
     "Use the following live market snapshot (JSON) as your primary data source:",
     snapshotText,
     "Before finalizing the trade idea you MUST research the latest public crypto headlines online and factor any breaking news into your reasoning.",
@@ -699,8 +752,9 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
     "1. Choose a symbol from the snapshot with healthy liquidity.",
     "2. entryPrice must stay within 3% of the snapshot lastPrice and represent a realistic limit maker entry.",
     "3. exitPrice must be higher than entryPrice by 0.5% - 5% unless news justifies a different range.",
-    "4. Mention the supporting data and news you considered inside the summary.",
-    `5. Write the summary field in ${summaryLanguage}.`
+    "4. Target a quick setup that can realistically fill and close within 24 hours based on liquidity and recent volatility.",
+    "5. Account for Binance trading fees on both entry and exit so the net result remains profitable after fees.",
+    `6. Mention the supporting data and news you considered inside the summary and write it in ${summaryLanguage}.`
   ].join("\n");
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -847,7 +901,14 @@ async function bootstrap() {
   app.listen(PORT, () => {
     console.log("my1 platform running on port", PORT);
   });
-  runEngine(getEngineSnapshots);
+  runEngine(getEngineSnapshots, {
+    reportRuleIssue: async ({ userId, ruleId, code, message }) => {
+      await upsertRuleError({ userId, ruleId, code, message });
+    },
+    clearRuleIssue: async ({ userId, ruleId }) => {
+      await clearRuleError(userId, ruleId);
+    }
+  });
 }
 
 bootstrap().catch(err => {
