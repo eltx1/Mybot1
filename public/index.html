@@ -3,128 +3,762 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>my1 — Dip-Buy / Take-Profit Engine</title>
+  <title>my1 — Spot Engine Control</title>
   <style>
-    body{font-family: system-ui,-apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:24px}
-    h1{margin-bottom:8px}
-    .card{border:1px solid #e5e7eb; border-radius:12px; padding:16px; margin-bottom:16px; box-shadow:0 1px 2px rgba(0,0,0,.04)}
-    label{display:block; font-weight:600; margin:6px 0 4px}
-    input{width:100%; padding:10px; border:1px solid #d1d5db; border-radius:8px}
-    table{width:100%; border-collapse: collapse}
-    th,td{padding:8px 10px; border-bottom:1px solid #eee; text-align:left}
-    .row{display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:12px}
-    @media (max-width:900px){ .row{grid-template-columns:1fr 1fr} }
-    button{padding:10px 14px; border:0; border-radius:10px; background:#111827; color:#fff; cursor:pointer}
-    .muted{color:#6b7280; font-size:14px}
+    :root {
+      color-scheme: light;
+      --bg: #f3f4f6;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --muted: #6b7280;
+      --border: rgba(148, 163, 184, 0.35);
+      --accent: #2563eb;
+      --accent-dark: #1d4ed8;
+      --success: #15803d;
+      --danger: #dc2626;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Inter", "Segoe UI", Roboto, Arial, sans-serif;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      padding: 28px clamp(16px, 4vw, 48px);
+      line-height: 1.5;
+    }
+    @media (max-width: 640px){
+      body { padding: 20px 16px; }
+    }
+    h1, h2, h3 { font-weight: 700; margin: 0 0 12px; }
+    p { margin: 0 0 12px; }
+    .page-header { margin-bottom: 24px; }
+    .page-header .muted { max-width: 640px; }
+
+    .status {
+      min-height: 24px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      transition: opacity 0.2s ease;
+    }
+    .status.success { color: var(--success); }
+    .status.error { color: var(--danger); }
+    .status.info { color: var(--accent); }
+
+    .layout {
+      display: grid;
+      gap: 20px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      margin-bottom: 20px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: 18px;
+      padding: 20px clamp(18px, 4vw, 26px);
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+      border: 1px solid var(--border);
+    }
+    .card h2 { font-size: 1.2rem; }
+    .card h3 { font-size: 1.1rem; }
+    .card + .card { margin-top: 20px; }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 14px 18px;
+    }
+    label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.92rem; }
+    input, select {
+      width: 100%;
+      padding: 11px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.6);
+      background: #f9fafb;
+      font-size: 0.95rem;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+      background: #fff;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+
+    .btn {
+      appearance: none;
+      border: none;
+      border-radius: 10px;
+      padding: 11px 18px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn.primary {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 12px 24px rgba(37, 99, 235, 0.25);
+    }
+    .btn.primary:hover:not(:disabled) { background: var(--accent-dark); transform: translateY(-1px); }
+    .btn.accent {
+      background: linear-gradient(135deg, #0ea5e9, #2563eb);
+      color: #fff;
+      box-shadow: 0 12px 26px rgba(14, 165, 233, 0.25);
+    }
+    .btn.ghost {
+      background: rgba(15, 23, 42, 0.05);
+      color: var(--text);
+    }
+    .btn.danger {
+      background: rgba(220, 38, 38, 0.12);
+      color: var(--danger);
+    }
+    .btn-text {
+      border: none;
+      background: transparent;
+      color: var(--accent);
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+      font-size: 0.9rem;
+    }
+    .btn-text.danger { color: var(--danger); }
+    .btn:disabled {
+      cursor: wait;
+      opacity: 0.65;
+      transform: none;
+      box-shadow: none;
+    }
+    .btn[data-loading="true"]::after {
+      content: "";
+      width: 16px;
+      height: 16px;
+      border: 3px solid rgba(255,255,255,0.45);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .table-card { margin-top: 18px; }
+    .table-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      gap: 12px;
+    }
+    .table-header h3 { margin: 0; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      background: rgba(37, 99, 235, 0.12);
+      color: var(--accent);
+    }
+
+    .table-wrapper { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 600px;
+    }
+    th, td {
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+      text-align: left;
+      vertical-align: top;
+      font-size: 0.92rem;
+    }
+    thead th {
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      background: rgba(15, 23, 42, 0.03);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr.is-paused { opacity: 0.65; }
+
+    .symbol {
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      font-size: 1rem;
+    }
+    .muted { color: var(--muted); font-size: 0.9rem; }
+    .muted.small { font-size: 0.78rem; }
+
+    .status-toggle { display: inline-flex; align-items: center; gap: 10px; }
+    .status-text.on { color: var(--success); font-weight: 600; }
+    .status-text.off { color: var(--muted); }
+
+    .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background-color: rgba(15, 23, 42, 0.25);
+      transition: background 0.2s ease;
+      border-radius: 999px;
+    }
+    .slider::before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: #fff;
+      transition: transform 0.2s ease;
+      border-radius: 50%;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.25);
+    }
+    .switch input:checked + .slider { background: linear-gradient(135deg, #22c55e, #16a34a); }
+    .switch input:checked + .slider::before { transform: translateX(20px); }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+    .pill.buy { background: rgba(34, 197, 94, 0.16); color: #166534; }
+    .pill.sell { background: rgba(239, 68, 68, 0.18); color: #b91c1c; }
+
+    .ai-summary {
+      background: rgba(15, 23, 42, 0.04);
+      padding: 10px 12px;
+      border-radius: 10px;
+      margin-top: 6px;
+      font-size: 0.85rem;
+      white-space: pre-wrap;
+    }
+    details.ai-details summary { cursor: pointer; font-weight: 600; font-size: 0.85rem; }
+    details.ai-details { margin-top: 8px; }
+
+    .empty-row td {
+      padding: 24px 14px;
+      text-align: center;
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    @media (max-width: 780px) {
+      table { min-width: 0; }
+      table.data-table thead { display: none; }
+      table.data-table tbody tr {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        padding: 16px 0;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+      }
+      table.data-table tbody tr:last-child { border-bottom: none; }
+      table.data-table td {
+        border: none;
+        padding: 0;
+      }
+      table.data-table td::before {
+        content: attr(data-label);
+        display: block;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+    }
   </style>
 </head>
 <body>
-  <h1>my1 — Dip-Buy / Take-Profit Engine</h1>
-  <p class="muted">Binance keys stay on the server. Rules are stored in a local JSON file — no DB needed.</p>
+  <header class="page-header">
+    <h1>my1 — Spot Trading Engine</h1>
+    <p class="muted">Binance keys تبقى على الخادم. القواعد تحفظ محليًا في ملف JSON، ويمكن التحكم بها من هنا مع دعم للأجهزة المحمولة.</p>
+  </header>
 
-  <div class="card">
-    <div class="row">
-      <div><label>Symbol</label><input id="symbol" placeholder="e.g., SOLUSDT"></div>
-      <div><label>Buy on dip %</label><input id="dip" type="text" inputmode="decimal" placeholder="2"></div>
-      <div><label>Take-profit %</label><input id="tp" type="text" inputmode="decimal" placeholder="2"></div>
-      <div><label>Budget (USDT)</label><input id="budget" type="text" inputmode="decimal" placeholder="50"></div>
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+
+  <section class="layout">
+    <article class="card">
+      <h2>Manual rule (قاعدة يدوية)</h2>
+      <p class="muted">كوّن إستراتيجية شراء عند الهبوط وجني أرباح محدد.</p>
+      <div class="form-grid">
+        <div>
+          <label for="symbol">Symbol</label>
+          <input id="symbol" placeholder="e.g., SOLUSDT">
+        </div>
+        <div>
+          <label for="dip">Buy on dip %</label>
+          <input id="dip" type="number" inputmode="decimal" placeholder="2">
+        </div>
+        <div>
+          <label for="tp">Take-profit %</label>
+          <input id="tp" type="number" inputmode="decimal" placeholder="2">
+        </div>
+        <div>
+          <label for="budget">Budget (USDT)</label>
+          <input id="budget" type="number" inputmode="decimal" placeholder="50">
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn primary" id="addRuleBtn">Add rule</button>
+        <button class="btn ghost" id="saveBtn">Sync with bot</button>
+      </div>
+    </article>
+
+    <article class="card">
+      <h2>AI role (قاعدة ذكاء اصطناعي)</h2>
+      <p class="muted">اضغط الزر ليقوم ChatGPT بتحليل السوق وبناء قاعدة تداول جاهزة.</p>
+      <div class="form-grid">
+        <div>
+          <label for="aiBudget">Budget (USDT)</label>
+          <input id="aiBudget" type="number" inputmode="decimal" value="100" min="10">
+        </div>
+        <div>
+          <label for="aiModel">Model</label>
+          <input id="aiModel" value="gpt-4o-mini" disabled>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn accent" id="aiGenerate">Generate AI role</button>
+      </div>
+      <p class="muted small">يتم إرسال البرومبت المطلوب إلى ChatGPT وإضافة الرد مباشرةً كقاعدة AI.</p>
+    </article>
+  </section>
+
+  <section class="card table-card">
+    <div class="table-header">
+      <h3>Manual rules</h3>
+      <span class="badge" id="manualCount">0</span>
     </div>
-    <div style="margin-top:10px">
-      <button onclick="addRule()">Add rule</button>
-      <button onclick="saveRules()" style="background:#16a34a; margin-inline-start:8px">Save & run</button>
+    <div class="table-wrapper">
+      <table class="data-table" id="manualRulesTable">
+        <thead>
+          <tr><th>Rule</th><th>Targets</th><th>Budget</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
     </div>
-  </div>
+  </section>
 
-  <div class="card">
-    <h3>Current rules</h3>
-    <table id="rulesTable">
-      <thead><tr><th>Symbol</th><th>Dip %</th><th>TP %</th><th>Budget</th><th>Status</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </div>
+  <section class="card table-card">
+    <div class="table-header">
+      <h3>AI roles</h3>
+      <span class="badge" id="aiCount">0</span>
+    </div>
+    <div class="table-wrapper">
+      <table class="data-table" id="aiRulesTable">
+        <thead>
+          <tr><th>Role</th><th>Entry</th><th>Target</th><th>Budget</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
 
-  <div class="card">
-    <h3>Open orders</h3>
-    <table id="ordersTable">
-      <thead><tr><th>Symbol</th><th>Side</th><th>Price</th><th>Qty</th><th>Status</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </div>
+  <section class="card table-card">
+    <div class="table-header">
+      <h3>Open orders</h3>
+      <div class="actions" style="margin-top:0">
+        <button class="btn ghost" id="refreshOrders">Refresh</button>
+      </div>
+    </div>
+    <div class="table-wrapper">
+      <table class="data-table" id="ordersTable">
+        <thead>
+          <tr><th>Symbol</th><th>Side</th><th>Price</th><th>Quantity</th><th>Type</th><th>Status</th><th>Last update</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
 
 <script>
-// Normalize decimals safely: convert "1,5" -> "1.5", trim spaces
-function toNumberSafe(v){
-  if (typeof v !== "string") v = String(v ?? "");
-  v = v.replace(/\s+/g, "").replace(",", ".");
-  const x = Number(v);
-  return Number.isFinite(x) ? x : NaN;
-}
+(function(){
+  const statusEl = document.getElementById('status');
+  const manualTableBody = document.querySelector('#manualRulesTable tbody');
+  const aiTableBody = document.querySelector('#aiRulesTable tbody');
+  const ordersTableBody = document.querySelector('#ordersTable tbody');
+  const manualCountEl = document.getElementById('manualCount');
+  const aiCountEl = document.getElementById('aiCount');
+  const refreshOrdersBtn = document.getElementById('refreshOrders');
+  let rules = [];
+  let ordersTimer = null;
+  let statusTimer = null;
+  let isOrdersLoading = false;
 
-let rules = [];
-
-function addRule(){
-  const r = {
-    symbol: (document.getElementById('symbol').value || "").trim().toUpperCase(),
-    dipPct: toNumberSafe(document.getElementById('dip').value),
-    tpPct: toNumberSafe(document.getElementById('tp').value),
-    budgetUSDT: toNumberSafe(document.getElementById('budget').value),
-    enabled: true
-  };
-  if(!r.symbol) return alert('Symbol is required');
-  if(!(r.dipPct>0)) return alert('Dip % must be a positive number');
-  if(!(r.tpPct>0)) return alert('TP % must be a positive number');
-  if(!(r.budgetUSDT>0)) return alert('Budget must be a positive number');
-  rules.push(r);
-  render();
-}
-
-async function saveRules(){
-  const res = await fetch('/api/rules', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(rules)
-  });
-  const j = await res.json();
-  alert('Saved and engine running ('+j.count+' rule'+(j.count===1?'': 's')+')');
-}
-
-async function load(){
-  const res = await fetch('/api/rules');
-  rules = await res.json();
-  render();
-}
-
-function render(){
-  const tb = document.querySelector('#rulesTable tbody');
-  tb.innerHTML = '';
-  for(const r of rules){
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${r.symbol}</td><td>${r.dipPct}</td><td>${r.tpPct}</td><td>${r.budgetUSDT}</td><td>${r.enabled?'Enabled':'Disabled'}</td>`;
-    tb.appendChild(tr);
+  function setStatus(message, type='info'){
+    if (!statusEl) return;
+    statusEl.textContent = message || '';
+    statusEl.className = `status ${type || ''}`.trim();
+    clearTimeout(statusTimer);
+    if (message){
+      statusTimer = setTimeout(()=>{
+        statusEl.textContent = '';
+        statusEl.className = 'status';
+      }, 6000);
+    }
   }
-}
 
-async function loadOrders(){
-  try{
-    const res = await fetch('/api/orders');
-    const arr = await res.json();
-    const tb = document.querySelector('#ordersTable tbody');
-    tb.innerHTML = '';
-    for(const {symbol, orders} of arr){
-      for(const o of orders){
+  function toNumberSafe(v){
+    if (typeof v !== 'string') v = String(v ?? '');
+    v = v.replace(/\s+/g, '').replace(/,/g, '.');
+    const num = Number(v);
+    return Number.isFinite(num) ? num : NaN;
+  }
+
+  function formatNumber(value){
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '-';
+    const abs = Math.abs(num);
+    const opts = { maximumFractionDigits: 8 };
+    if (abs >= 1000) opts.maximumFractionDigits = 2;
+    else if (abs >= 100) opts.maximumFractionDigits = 2;
+    else if (abs >= 1) opts.maximumFractionDigits = 4;
+    return num.toLocaleString(undefined, opts);
+  }
+
+  function formatCurrency(v){
+    const num = Number(v);
+    if (!Number.isFinite(num)) return '-';
+    return `${formatNumber(num)} USDT`;
+  }
+
+  function formatPercent(v){
+    const num = Number(v);
+    if (!Number.isFinite(num)) return '-';
+    return `${num.toFixed(2)}%`;
+  }
+
+  function formatDate(ms){
+    if (!ms) return '-';
+    const d = new Date(ms);
+    if (Number.isNaN(d.getTime())) return '-';
+    return d.toLocaleString();
+  }
+
+  function escapeHtml(str){
+    return String(str || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+  }
+
+  function extractRules(payload){
+    if (Array.isArray(payload)) return payload;
+    if (payload && Array.isArray(payload.rules)) return payload.rules;
+    return [];
+  }
+
+  function render(){
+    renderManualRules();
+    renderAiRules();
+  }
+
+  function renderManualRules(){
+    const manual = rules.filter(r => (r.type || 'manual').toLowerCase() !== 'ai');
+    manualCountEl.textContent = manual.length;
+    manualTableBody.innerHTML = '';
+    if (!manual.length){
+      const tr = document.createElement('tr');
+      tr.className = 'empty-row';
+      tr.innerHTML = '<td colspan="5">No manual rules yet.</td>';
+      manualTableBody.appendChild(tr);
+      return;
+    }
+    for (const rule of manual){
+      const tr = document.createElement('tr');
+      if (!rule.enabled) tr.classList.add('is-paused');
+      tr.dataset.id = rule.id;
+      tr.innerHTML = `
+        <td data-label="Rule">
+          <div class="symbol">${escapeHtml(rule.symbol)}</div>
+          <div class="muted small">Created ${formatDate(rule.createdAt)}</div>
+        </td>
+        <td data-label="Targets">
+          <div>Buy dip: <strong>${formatPercent(rule.dipPct)}</strong></div>
+          <div class="muted small">Take profit: ${formatPercent(rule.tpPct)}</div>
+        </td>
+        <td data-label="Budget">${formatCurrency(rule.budgetUSDT)}</td>
+        <td data-label="Status">
+          <div class="status-toggle">
+            <label class="switch">
+              <input type="checkbox" data-action="toggle" data-id="${rule.id}" ${rule.enabled ? 'checked' : ''}>
+              <span class="slider"></span>
+            </label>
+            <span class="status-text ${rule.enabled ? 'on' : 'off'}">${rule.enabled ? 'Enabled' : 'Paused'}</span>
+          </div>
+        </td>
+        <td data-label="Actions">
+          <button class="btn-text danger" data-action="delete" data-id="${rule.id}">Delete</button>
+        </td>
+      `;
+      manualTableBody.appendChild(tr);
+    }
+  }
+
+  function renderAiRules(){
+    const aiRules = rules.filter(r => (r.type || '').toLowerCase() === 'ai');
+    aiCountEl.textContent = aiRules.length;
+    aiTableBody.innerHTML = '';
+    if (!aiRules.length){
+      const tr = document.createElement('tr');
+      tr.className = 'empty-row';
+      tr.innerHTML = '<td colspan="6">No AI roles generated yet.</td>';
+      aiTableBody.appendChild(tr);
+      return;
+    }
+    for (const rule of aiRules){
+      const tr = document.createElement('tr');
+      if (!rule.enabled) tr.classList.add('is-paused');
+      tr.dataset.id = rule.id;
+      const summary = rule.aiSummary ? `<details class="ai-details"><summary>AI notes</summary><div class="ai-summary">${escapeHtml(rule.aiSummary)}</div></details>` : '';
+      tr.innerHTML = `
+        <td data-label="Role">
+          <div class="symbol">${escapeHtml(rule.symbol)}</div>
+          <div class="muted small">Model: ${escapeHtml(rule.aiModel || 'ChatGPT')}</div>
+          ${summary}
+        </td>
+        <td data-label="Entry">${formatNumber(rule.entryPrice)}</td>
+        <td data-label="Target">${formatNumber(rule.exitPrice)}</td>
+        <td data-label="Budget">${formatCurrency(rule.budgetUSDT)}</td>
+        <td data-label="Status">
+          <div class="status-toggle">
+            <label class="switch">
+              <input type="checkbox" data-action="toggle" data-id="${rule.id}" ${rule.enabled ? 'checked' : ''}>
+              <span class="slider"></span>
+            </label>
+            <span class="status-text ${rule.enabled ? 'on' : 'off'}">${rule.enabled ? 'Enabled' : 'Paused'}</span>
+          </div>
+        </td>
+        <td data-label="Actions">
+          <button class="btn-text danger" data-action="delete" data-id="${rule.id}">Delete</button>
+        </td>
+      `;
+      aiTableBody.appendChild(tr);
+    }
+  }
+
+  async function persistAll(nextRules, { message, type='success', silent=false } = {}){
+    try {
+      const res = await fetch('/api/rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nextRules)
+      });
+      const data = await res.json().catch(()=>({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to save rules');
+      }
+      rules = extractRules(data);
+      render();
+      if (!silent && message) setStatus(message, type);
+      await loadOrders(true);
+    } catch (err) {
+      console.error(err);
+      setStatus(err.message || 'Failed to sync with server', 'error');
+      throw err;
+    }
+  }
+
+  async function loadRules(){
+    try {
+      const res = await fetch('/api/rules');
+      const data = await res.json();
+      rules = extractRules(data);
+      render();
+    } catch (err) {
+      console.error('Failed to load rules', err);
+      setStatus('Failed to load rules', 'error');
+    }
+  }
+
+  async function loadOrders(silent=false){
+    if (isOrdersLoading) return;
+    isOrdersLoading = true;
+    if (!silent){
+      ordersTableBody.innerHTML = '<tr class="empty-row"><td colspan="7">Loading orders...</td></tr>';
+    }
+    try {
+      const res = await fetch('/api/orders');
+      const data = await res.json();
+      renderOrders(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('orders load failed', err);
+      ordersTableBody.innerHTML = '<tr class="empty-row"><td colspan="7">Unable to load orders</td></tr>';
+      setStatus('Could not fetch open orders', 'error');
+    } finally {
+      isOrdersLoading = false;
+    }
+  }
+
+  function renderOrders(list){
+    ordersTableBody.innerHTML = '';
+    let hasRows = false;
+    for (const { symbol, orders } of list){
+      if (!orders || !orders.length) continue;
+      for (const order of orders){
+        hasRows = true;
+        const filled = Number(order.executedQty);
+        const original = Number(order.origQty);
+        const filledPct = original > 0 ? ((filled / original) * 100) : 0;
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${symbol}</td><td>${o.side}</td><td>${o.price}</td><td>${o.origQty}</td><td>${o.status}</td>`;
-        tb.appendChild(tr);
+        tr.innerHTML = `
+          <td data-label="Symbol">
+            <div class="symbol">${escapeHtml(symbol)}</div>
+            ${order.clientOrderId ? `<div class="muted small">${escapeHtml(order.clientOrderId)}</div>` : ''}
+          </td>
+          <td data-label="Side"><span class="pill ${order.side === 'SELL' ? 'sell' : 'buy'}">${escapeHtml(order.side)}</span></td>
+          <td data-label="Price">${formatNumber(order.price)}</td>
+          <td data-label="Quantity">
+            <div>${formatNumber(order.origQty)}</div>
+            <div class="muted small">${formatNumber(order.executedQty)} filled (${filledPct.toFixed(1)}%)</div>
+          </td>
+          <td data-label="Type">${escapeHtml(order.type || '')}</td>
+          <td data-label="Status">${escapeHtml(order.status || '')}</td>
+          <td data-label="Last update">${formatDate(order.updateTime || order.time)}</td>
+        `;
+        ordersTableBody.appendChild(tr);
       }
     }
-  }catch(e){
-    console.error('orders load failed', e);
+    if (!hasRows){
+      const tr = document.createElement('tr');
+      tr.className = 'empty-row';
+      tr.innerHTML = '<td colspan="7">No open orders at the moment.</td>';
+      ordersTableBody.appendChild(tr);
+    }
   }
-}
 
-load();
-loadOrders();
-setInterval(loadOrders, 5000);
+  async function addRule(){
+    const symbol = (document.getElementById('symbol').value || '').trim().toUpperCase();
+    const dipPct = toNumberSafe(document.getElementById('dip').value);
+    const tpPct = toNumberSafe(document.getElementById('tp').value);
+    const budget = toNumberSafe(document.getElementById('budget').value);
+
+    if (!symbol) { setStatus('Symbol is required', 'error'); return; }
+    if (!(dipPct > 0)) { setStatus('Dip % must be a positive number', 'error'); return; }
+    if (!(tpPct > 0)) { setStatus('Take-profit % must be a positive number', 'error'); return; }
+    if (!(budget > 0)) { setStatus('Budget must be a positive number', 'error'); return; }
+
+    const newRule = {
+      symbol,
+      dipPct,
+      tpPct,
+      budgetUSDT: budget,
+      enabled: true,
+      type: 'manual',
+      createdAt: Date.now()
+    };
+
+    try {
+      await persistAll([...rules, newRule], { message: `Manual rule added for ${symbol}`, type: 'success' });
+      document.getElementById('symbol').value = '';
+      document.getElementById('dip').value = '';
+      document.getElementById('tp').value = '';
+      document.getElementById('budget').value = '';
+    } catch {}
+  }
+
+  async function toggleRule(id, enabled){
+    const next = rules.map(r => r.id === id ? { ...r, enabled } : r);
+    try {
+      await persistAll(next, { message: enabled ? 'Rule enabled' : 'Rule paused', type: 'info', silent: false });
+    } catch {}
+  }
+
+  async function deleteRule(id){
+    if (!id) return;
+    if (!confirm('Delete this rule?')) return;
+    const next = rules.filter(r => r.id !== id);
+    try {
+      await persistAll(next, { message: 'Rule removed', type: 'info' });
+    } catch {}
+  }
+
+  async function syncRules(){
+    try {
+      await persistAll(rules, { message: 'Rules synced with engine', type: 'success' });
+    } catch {}
+  }
+
+  async function generateAiRole(){
+    const btn = document.getElementById('aiGenerate');
+    if (!btn || btn.dataset.loading === 'true') return;
+    const budget = toNumberSafe(document.getElementById('aiBudget').value);
+    if (!(budget > 0)) { setStatus('Enter a valid budget for AI role', 'error'); return; }
+    btn.dataset.loading = 'true';
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/ai-role', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ budgetUSDT: budget })
+      });
+      const data = await res.json().catch(()=>({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to generate AI role');
+      }
+      await loadRules();
+      if (data && data.rule && data.rule.aiModel){
+        const modelInput = document.getElementById('aiModel');
+        if (modelInput) modelInput.value = data.rule.aiModel;
+      }
+      const newSymbol = data && data.rule && data.rule.symbol ? data.rule.symbol : 'symbol';
+      setStatus(`AI role created for ${newSymbol}`, 'success');
+      await loadOrders(true);
+    } catch (err) {
+      console.error('AI role error', err);
+      setStatus(err.message || 'Failed to generate AI role', 'error');
+    } finally {
+      btn.disabled = false;
+      delete btn.dataset.loading;
+    }
+  }
+
+  document.getElementById('addRuleBtn').addEventListener('click', addRule);
+  document.getElementById('saveBtn').addEventListener('click', syncRules);
+  document.getElementById('aiGenerate').addEventListener('click', generateAiRole);
+  refreshOrdersBtn.addEventListener('click', () => loadOrders());
+
+  document.body.addEventListener('change', (event) => {
+    const target = event.target;
+    if (target && target.dataset && target.dataset.action === 'toggle'){
+      const id = target.dataset.id;
+      const enabled = target.checked;
+      toggleRule(id, enabled);
+    }
+  });
+
+  document.body.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-action="delete"]');
+    if (btn){
+      const id = btn.dataset.id;
+      deleteRule(id);
+    }
+  });
+
+  async function init(){
+    await loadRules();
+    await loadOrders();
+    if (ordersTimer) clearInterval(ordersTimer);
+    ordersTimer = setInterval(() => loadOrders(true), 7000);
+  }
+
+  init();
+})();
 </script>
 </body>
 </html>
