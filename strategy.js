@@ -154,9 +154,71 @@ async function processRule({ binance, rule, caches, lastTradeId, userKey, hooks 
   const buyId = makeClientOrderId(rule, "BUY");
   const sellId = makeClientOrderId(rule, "SELL");
 
+  const getRecentBuy = async () => {
+    if (!caches.trades[symbol]) {
+      try {
+        caches.trades[symbol] = await binance.myTrades(symbol, 10);
+      } catch (err) {
+        console.error(`[ENGINE] trades error for ${symbol}:`, err.message);
+        caches.trades[symbol] = [];
+      }
+    }
+    const trades = caches.trades[symbol];
+    if (!Array.isArray(trades) || !trades.length) return null;
+    return [...trades].reverse().find(t => t.isBuyer) || null;
+  };
+
+  const tryHandleFilledBuy = async () => {
+    const recentBuy = await getRecentBuy();
+    if (!recentBuy) return false;
+
+    const tradeId = recentBuy.id ?? recentBuy.tradeId;
+    if (tradeId === undefined || tradeId === lastTradeId.get(ruleKey)) return false;
+
+    const tradeTime = Number(recentBuy.time ?? recentBuy.T ?? recentBuy.transactTime ?? recentBuy.updateTime);
+    const ruleCreatedAt = Number(rule.createdAt);
+    if (Number.isFinite(tradeTime) && Number.isFinite(ruleCreatedAt) && tradeTime + 60000 < ruleCreatedAt) {
+      return false;
+    }
+
+    const filledPrice = Number(recentBuy.price);
+    if (!(filledPrice > 0)) return false;
+    const fillDrift = priceDriftPct(filledPrice, buyTarget);
+    if (fillDrift > 1.5) return false;
+
+    const filledQty = floorToStep(Number(recentBuy.qty), filters.stepSize);
+    if (!(filledQty > 0)) return false;
+
+    lastTradeId.set(ruleKey, tradeId);
+
+    let sellPrice = 0;
+    if (type === "manual") {
+      sellPrice = roundToTick(filledPrice * (1 + tpPct / 100), filters.tickSize);
+    } else {
+      sellPrice = roundToTick(Number(rule.exitPrice), filters.tickSize);
+    }
+    if (!(sellPrice > 0)) return false;
+
+    const sellOrder = pickOrderForRule(orders, rule, "SELL");
+    if (sellOrder) return true;
+
+    try {
+      await binance.placeLimit(symbol, "SELL", filledQty, sellPrice, { makerOnly: MAKER_ONLY, clientOrderId: sellId });
+      caches.orders[symbol] = null;
+      await clearIssue();
+    } catch (err) {
+      console.error(`[ENGINE] place SELL failed for ${symbol}:`, err.message);
+    }
+    return true;
+  };
+
   let buyOrder = pickOrderForRule(orders, rule, "BUY");
   if (buyOrder) {
     await clearIssue();
+  }
+
+  if (await tryHandleFilledBuy()) {
+    return;
   }
 
   if (!buyOrder) {
@@ -191,49 +253,7 @@ async function processRule({ binance, rule, caches, lastTradeId, userKey, hooks 
     return;
   }
 
-  if (!caches.trades[symbol]) {
-    try {
-      caches.trades[symbol] = await binance.myTrades(symbol, 10);
-    } catch (err) {
-      console.error(`[ENGINE] trades error for ${symbol}:`, err.message);
-      return;
-    }
-  }
-  const trades = caches.trades[symbol];
-  if (!Array.isArray(trades) || !trades.length) return;
-
-  const recentBuy = [...trades].reverse().find(t => t.isBuyer);
-  if (!recentBuy) return;
-  if (recentBuy.id === lastTradeId.get(ruleKey)) return;
-
-  const filledPrice = Number(recentBuy.price);
-  if (!(filledPrice > 0)) return;
-  const fillDrift = priceDriftPct(filledPrice, buyTarget);
-  if (fillDrift > 1.5) return;
-
-  const filledQty = floorToStep(Number(recentBuy.qty), filters.stepSize);
-  if (!(filledQty > 0)) return;
-
-  lastTradeId.set(ruleKey, recentBuy.id);
-
-  let sellPrice = 0;
-  if (type === "manual") {
-    sellPrice = roundToTick(filledPrice * (1 + tpPct / 100), filters.tickSize);
-  } else {
-    sellPrice = roundToTick(Number(rule.exitPrice), filters.tickSize);
-  }
-  if (!(sellPrice > 0)) return;
-
-  const sellOrder = pickOrderForRule(orders, rule, "SELL");
-  if (!sellOrder) {
-    try {
-      await binance.placeLimit(symbol, "SELL", filledQty, sellPrice, { makerOnly: MAKER_ONLY, clientOrderId: sellId });
-      caches.orders[symbol] = null;
-      await clearIssue();
-    } catch (err) {
-      console.error(`[ENGINE] place SELL failed for ${symbol}:`, err.message);
-    }
-  }
+  await tryHandleFilledBuy();
 }
 
 async function processSnapshot(snapshot, lastTradeId, hooks) {
