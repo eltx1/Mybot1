@@ -185,6 +185,9 @@ function summariseCompletedTrades(trades, symbol) {
     const commission = toFiniteNumber(trade?.commission);
     const commissionAsset = typeof trade?.commissionAsset === "string" ? trade.commissionAsset.toUpperCase() : "";
     const timestamp = Number(trade?.time || trade?.transactTime || Date.now());
+    const tradePrice = qty > 0
+      ? (price > 0 ? price : (quoteQty > 0 ? quoteQty / qty : 0))
+      : 0;
 
     if (!(qty > 0) || !(quoteQty >= 0)) {
       continue;
@@ -208,6 +211,7 @@ function summariseCompletedTrades(trades, symbol) {
       } else if (commission && commissionAsset === base) {
         position.baseBought -= commission;
       }
+      if (position.baseBought < 0) position.baseBought = 0;
       if (!position.firstBuyTime) position.firstBuyTime = timestamp;
       position.lastTradeTime = timestamp;
       continue;
@@ -222,8 +226,17 @@ function summariseCompletedTrades(trades, symbol) {
     if (commission && commissionAsset === quote) {
       position.quoteReceived -= commission;
     } else if (commission && commissionAsset === base) {
-      position.baseSold -= commission;
+      const conversionPrice = tradePrice > 0
+        ? tradePrice
+        : (position.baseSold > EPSILON && position.quoteReceived > 0
+            ? position.quoteReceived / position.baseSold
+            : 0);
+      if (conversionPrice > 0) {
+        position.quoteReceived -= commission * conversionPrice;
+      }
     }
+    if (position.baseSold < 0) position.baseSold = 0;
+    if (position.quoteReceived < 0) position.quoteReceived = 0;
     position.lastTradeTime = timestamp;
 
     if (position.baseBought > EPSILON && position.baseSold >= position.baseBought - EPSILON) {
@@ -235,8 +248,10 @@ function summariseCompletedTrades(trades, symbol) {
       if (baseBought > EPSILON && baseSold > EPSILON && Number.isFinite(quoteSpent) && Number.isFinite(quoteReceived)) {
         const quantity = Math.max(0, Math.min(baseBought, baseSold));
         if (quantity > EPSILON) {
-          const buyPrice = quoteSpent / baseBought;
-          const sellPrice = quoteReceived / baseSold;
+          const buyDenominator = baseBought > EPSILON ? baseBought : quantity;
+          const sellDenominator = quantity > EPSILON ? quantity : baseSold;
+          const buyPrice = buyDenominator > EPSILON ? quoteSpent / buyDenominator : 0;
+          const sellPrice = sellDenominator > EPSILON ? quoteReceived / sellDenominator : 0;
           const profit = quoteReceived - quoteSpent;
           const profitPct = quoteSpent !== 0 ? (profit / quoteSpent) * 100 : 0;
           const openedAt = position.firstBuyTime || timestamp;

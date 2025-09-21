@@ -51,6 +51,15 @@ npm start
 | `OPENAI_MODEL` | اسم نموذج OpenAI الافتراضي (افتراضي `gpt-4o-mini`). |
 | `BINANCE_BASE` | عنوان واجهة Binance (افتراضي `https://api.binance.com`). |
 | `MAKER_ONLY` | هل يتم استخدام أوامر LIMIT_MAKER بشكل افتراضي (افتراضي `true`). |
+| `APP_BASE_URL` | العنوان الأساسي المستخدم لإنشاء روابط الواجهة وإشعارات الدفع (افتراضي `http://localhost:8080`). |
+| `FRONTEND_URL` | عنوان بديل للواجهة الأمامية في حال نشرها على نطاق مختلف (اختياري). |
+| `PUBLIC_URL` | عنوان عام إضافي تستخدمه بعض الروابط أو رسائل البريد (اختياري). |
+| `STRIPE_SECRET_KEY` | مفتاح Stripe السري لتفعيل بوابة الدفع Stripe. |
+| `STRIPE_WEBHOOK_SECRET` | توقيع Webhook القادم من Stripe للتحقق من الإشعارات. |
+| `CRYPTOMUS_MERCHANT_ID` | معرف التاجر داخل بوابة Cryptomus. |
+| `CRYPTOMUS_PAYMENT_KEY` | مفتاح الدفع/‏API الخاص ببوابة Cryptomus. |
+| `CRYPTOMUS_SUCCESS_URL` | رابط النجاح الذي يتم إعادة التوجيه إليه بعد الدفع عبر Cryptomus. |
+| `CRYPTOMUS_CANCEL_URL` | رابط الإلغاء أو الفشل لعمليات Cryptomus. |
 
 ## بنية قاعدة البيانات
 
