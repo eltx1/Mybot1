@@ -2379,6 +2379,7 @@
       const currentPlanId = ent.plan ? Number(ent.plan.id) : null;
       const pendingPlanId = ent && ent.pending && ent.pending.plan ? Number(ent.pending.plan.id) : null;
       const availableProviders = state.providers || {};
+      const isAuthenticated = Boolean(state.token && state.user);
       for (const plan of plans) {
         const card = document.createElement('article');
         card.className = 'plan-card';
@@ -2431,7 +2432,7 @@
         const providers = [];
         if (availableProviders.stripe) providers.push({ provider: 'stripe', label: translate('subscription.payWithStripe') });
         if (availableProviders.cryptomus) providers.push({ provider: 'cryptomus', label: translate('subscription.payWithCryptomus') });
-        if (!state.token) {
+        if (!isAuthenticated) {
           const note = document.createElement('p');
           note.className = 'provider-label';
           note.textContent = translate('subscription.loginRequired');
@@ -2589,8 +2590,11 @@
 
     async function startCheckout(planId, provider, trigger) {
       if (!planId || !provider) return;
-      if (!state.token) {
+      if (!state.token || !state.user) {
         setStatus(translate('subscription.loginRequired'), 'error');
+        renderPricingCards();
+        renderDashboardPlans();
+        showLanding();
         return;
       }
       const pendingPlanId = state.entitlements?.pending?.plan?.id;
@@ -2734,6 +2738,10 @@
         state.ordersTimer = setInterval(() => loadOrders(true), 8000);
       } catch (err) {
         console.error('bootstrap error', err);
+        if (err && err.message === 'Unauthorized') {
+          handleLogout();
+          return;
+        }
         setStatus(err.message, 'error');
       }
     }
