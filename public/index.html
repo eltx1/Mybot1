@@ -801,6 +801,167 @@
       white-space: pre-wrap;
     }
 
+    .completed-trades-note {
+      display: none;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    .completed-trades-note.visible {
+      display: block;
+    }
+
+    .completed-trades-list {
+      display: grid;
+      gap: 16px;
+    }
+
+    .trade-card {
+      background: linear-gradient(145deg, rgba(255,255,255,0.98), rgba(248,250,252,0.92));
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 22px;
+      padding: 22px 24px;
+      box-shadow: 0 24px 55px rgba(15, 23, 42, 0.12);
+      display: grid;
+      gap: 18px;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .trade-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 30px 60px rgba(15, 23, 42, 0.16);
+    }
+
+    .trade-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .trade-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .trade-symbol {
+      font-weight: 700;
+      font-size: 1.1rem;
+      letter-spacing: 0.04em;
+    }
+
+    .trade-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(37, 99, 235, 0.12);
+      color: var(--accent);
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .trade-closed {
+      font-size: 0.85rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .trade-card-body {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    }
+
+    .metric {
+      background: rgba(15, 23, 42, 0.03);
+      border-radius: 16px;
+      padding: 14px 16px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .metric .label {
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .metric .value {
+      font-weight: 600;
+      font-size: 1.05rem;
+    }
+
+    .metric .subvalue {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .metric.profit {
+      background: rgba(37, 99, 235, 0.08);
+      color: var(--accent-dark);
+    }
+
+    .metric.profit .value {
+      font-size: 1.15rem;
+    }
+
+    .metric.profit.positive {
+      background: rgba(22, 163, 74, 0.12);
+      color: var(--success);
+    }
+
+    .metric.profit.negative {
+      background: rgba(220, 38, 38, 0.12);
+      color: var(--danger);
+    }
+
+    .metric.profit.neutral {
+      background: rgba(148, 163, 184, 0.12);
+      color: var(--text);
+    }
+
+    .metric.profit .subvalue {
+      color: inherit;
+      opacity: 0.85;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    .trade-card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    .trade-card-footer span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .empty-state {
+      padding: 28px 22px;
+      border-radius: 18px;
+      border: 1px dashed rgba(148, 163, 184, 0.4);
+      background: rgba(15, 23, 42, 0.03);
+      text-align: center;
+      font-weight: 500;
+      color: var(--muted);
+    }
+
     .rule-error {
       margin-top: 8px;
       padding: 10px 12px;
@@ -834,6 +995,11 @@
         color: var(--muted);
         margin-bottom: 4px;
       }
+      .trade-card { padding: 18px; }
+      .trade-card-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+      .trade-card-body { grid-template-columns: 1fr; }
+      .trade-card-footer { flex-direction: column; align-items: flex-start; gap: 6px; }
+      .trade-closed { white-space: normal; }
     }
   </style>
 </head>
@@ -1106,6 +1272,19 @@
           </table>
         </div>
       </section>
+      <section class="card table-card">
+        <div class="table-header">
+          <div>
+            <h2 data-i18n="completed.title">Completed trades</h2>
+            <p class="muted small" data-i18n="completed.subtitle">Latest buy &amp; sell cycles with realised profit.</p>
+          </div>
+          <div class="actions">
+            <button class="btn ghost" id="refreshCompletedTrades" type="button" data-i18n="completed.refresh">Refresh</button>
+          </div>
+        </div>
+        <p class="completed-trades-note small" id="completedTradesNotice"></p>
+        <div class="completed-trades-list" id="completedTradesList"></div>
+      </section>
     </main>
   </div>
 
@@ -1228,6 +1407,24 @@
           },
           empty: "No open orders right now."
         },
+        completed: {
+          title: "Completed trades",
+          subtitle: "Latest buy & sell cycles with realised profit.",
+          refresh: "Refresh",
+          status: "Completed",
+          closed: "Closed",
+          opened: "Opened",
+          duration: "Duration",
+          instant: "Instant",
+          empty: "No completed trades yet.",
+          labels: {
+            quantity: "Quantity",
+            avgBuy: "Avg buy",
+            avgSell: "Avg sell",
+            profit: "Profit",
+            return: "Return"
+          }
+        },
         manualRules: {
           buyOnDipLabel: "Buy on dip:",
           takeProfitLabel: "Take profit:",
@@ -1252,6 +1449,7 @@
           manualSynced: "Rules synced with engine.",
           aiGenerated: "AI rule generated successfully.",
           ordersRefreshed: "Open orders refreshed.",
+          completedRefreshed: "Completed trades updated.",
           ruleActivated: "Rule enabled.",
           rulePaused: "Rule paused.",
           ruleDeleted: "Rule deleted.",
@@ -1413,6 +1611,24 @@
           },
           empty: "لا توجد أوامر مفتوحة حاليًا."
         },
+        completed: {
+          title: "الصفقات المكتملة",
+          subtitle: "أحدث دورات الشراء والبيع مع صافي الربح المحقق.",
+          refresh: "تحديث",
+          status: "مكتملة",
+          closed: "أُغلقت",
+          opened: "وقت الفتح",
+          duration: "المدة",
+          instant: "فوري",
+          empty: "لا توجد صفقات مكتملة بعد.",
+          labels: {
+            quantity: "الكمية",
+            avgBuy: "متوسط الشراء",
+            avgSell: "متوسط البيع",
+            profit: "الربح",
+            return: "العائد"
+          }
+        },
         manualRules: {
           buyOnDipLabel: "الشراء عند الانخفاض:",
           takeProfitLabel: "جني الربح:",
@@ -1437,6 +1653,7 @@
           manualSynced: "تمت مزامنة القواعد مع المحرك.",
           aiGenerated: "تم توليد قاعدة ذكاء اصطناعي بنجاح.",
           ordersRefreshed: "تم تحديث الأوامر المفتوحة.",
+          completedRefreshed: "تم تحديث الصفقات المكتملة.",
           ruleActivated: "تم تفعيل القاعدة.",
           rulePaused: "تم إيقاف القاعدة.",
           ruleDeleted: "تم حذف القاعدة.",
@@ -1496,6 +1713,9 @@
       statusTimer: null,
       hasKeys: false,
       isOrdersLoading: false,
+      completedTrades: [],
+      completedTradesErrors: [],
+      isCompletedTradesLoading: false,
       lastRuleErrorsDigest: ''
     };
 
@@ -1527,9 +1747,12 @@
     const manualTableBody = document.querySelector('#manualRulesTable tbody');
     const aiTableBody = document.querySelector('#aiRulesTable tbody');
     const ordersTableBody = document.querySelector('#ordersTable tbody');
+    const completedTradesList = document.getElementById('completedTradesList');
+    const completedTradesNotice = document.getElementById('completedTradesNotice');
     const manualCountEl = document.getElementById('manualCount');
     const aiCountEl = document.getElementById('aiCount');
     const refreshOrdersBtn = document.getElementById('refreshOrders');
+    const refreshCompletedBtn = document.getElementById('refreshCompletedTrades');
     const languageToggle = document.getElementById('languageToggle');
     const pricingGrid = document.getElementById('pricingGrid');
     const dashboardPlansGrid = document.getElementById('dashboardPlans');
@@ -1601,6 +1824,7 @@
       renderSubscription();
       renderTables();
       renderOrders(currentOrdersCache);
+      renderCompletedTrades(state.completedTrades, state.completedTradesErrors);
     }
 
     function setStatus(message, type = 'info') {
@@ -1748,6 +1972,49 @@
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return '-';
       return date.toLocaleDateString(state.language === 'ar' ? 'ar-EG' : undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+
+    function formatAsset(amount, asset) {
+      const value = formatNumber(amount);
+      if (value === '-') return '-';
+      return asset ? `${value} ${asset}` : value;
+    }
+
+    function formatSignedCurrency(value, asset) {
+      const num = Number(value);
+      if (!Number.isFinite(num)) return '-';
+      const abs = formatNumber(Math.abs(num));
+      const sign = num > 0 ? '+' : num < 0 ? '-' : '';
+      return `${sign}${abs}${asset ? ` ${asset}` : ''}`.trim();
+    }
+
+    function formatSignedPercent(value) {
+      const num = Number(value);
+      if (!Number.isFinite(num)) return '-';
+      const abs = Math.abs(num).toFixed(2);
+      const sign = num > 0 ? '+' : num < 0 ? '-' : '';
+      return `${sign}${abs}%`;
+    }
+
+    function formatDuration(ms) {
+      const num = Number(ms);
+      if (!Number.isFinite(num) || num <= 0) {
+        return translate('completed.instant');
+      }
+      const totalSeconds = Math.floor(num / 1000);
+      const days = Math.floor(totalSeconds / 86400);
+      const hours = Math.floor((totalSeconds % 86400) / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      const labels = state.language === 'ar'
+        ? { day: 'ي', hour: 'س', minute: 'د', second: 'ث' }
+        : { day: 'd', hour: 'h', minute: 'm', second: 's' };
+      const parts = [];
+      if (days) parts.push(`${days}${labels.day}`);
+      if (hours) parts.push(`${hours}${labels.hour}`);
+      if (minutes) parts.push(`${minutes}${labels.minute}`);
+      if (!parts.length && seconds) parts.push(`${seconds}${labels.second}`);
+      return parts.length ? parts.slice(0, 2).join(' ') : translate('completed.instant');
     }
 
     function resolveRuleError(rule) {
@@ -1905,6 +2172,82 @@
           `;
           ordersTableBody.appendChild(tr);
         }
+      }
+    }
+
+    function renderCompletedTrades(rows, errors = []) {
+      state.completedTrades = Array.isArray(rows) ? rows : [];
+      state.completedTradesErrors = Array.isArray(errors) ? errors : [];
+
+      if (completedTradesNotice) {
+        if (state.completedTradesErrors.length) {
+          completedTradesNotice.textContent = state.completedTradesErrors.join(' • ');
+          completedTradesNotice.classList.add('visible');
+        } else {
+          completedTradesNotice.textContent = '';
+          completedTradesNotice.classList.remove('visible');
+        }
+      }
+
+      if (!completedTradesList) return;
+      completedTradesList.innerHTML = '';
+
+      if (!state.completedTrades.length) {
+        const empty = document.createElement('div');
+        empty.className = 'empty-state';
+        empty.textContent = translate('completed.empty');
+        completedTradesList.appendChild(empty);
+        return;
+      }
+
+      for (const trade of state.completedTrades) {
+        if (!trade || typeof trade !== 'object') continue;
+        const profitClass = trade.profit > 0 ? 'positive' : trade.profit < 0 ? 'negative' : 'neutral';
+        const card = document.createElement('article');
+        card.className = 'trade-card';
+        const quantity = formatAsset(trade.quantity, trade.baseAsset);
+        const buyPrice = formatAsset(trade.buyPrice, trade.quoteAsset);
+        const sellPrice = formatAsset(trade.sellPrice, trade.quoteAsset);
+        const profitValue = formatSignedCurrency(trade.profit, trade.quoteAsset);
+        const profitPercent = formatSignedPercent(trade.profitPct);
+        const returnLabel = translate('completed.labels.return');
+        const returnDisplay = profitPercent === '-' ? returnLabel : `${returnLabel} · ${profitPercent}`;
+        const openedAt = formatDate(trade.openedAt);
+        const closedAt = formatDate(trade.closedAt);
+        const duration = formatDuration(trade.durationMs);
+        card.innerHTML = `
+          <div class="trade-card-header">
+            <div class="trade-title">
+              <span class="trade-symbol">${escapeHtml(trade.symbol || '')}</span>
+              <span class="trade-chip">${escapeHtml(translate('completed.status'))}</span>
+            </div>
+            <span class="trade-closed">${escapeHtml(translate('completed.closed'))} ${escapeHtml(closedAt)}</span>
+          </div>
+          <div class="trade-card-body">
+            <div class="metric">
+              <span class="label">${escapeHtml(translate('completed.labels.quantity'))}</span>
+              <span class="value">${escapeHtml(quantity)}</span>
+            </div>
+            <div class="metric">
+              <span class="label">${escapeHtml(translate('completed.labels.avgBuy'))}</span>
+              <span class="value">${escapeHtml(buyPrice)}</span>
+            </div>
+            <div class="metric">
+              <span class="label">${escapeHtml(translate('completed.labels.avgSell'))}</span>
+              <span class="value">${escapeHtml(sellPrice)}</span>
+            </div>
+            <div class="metric profit ${profitClass}">
+              <span class="label">${escapeHtml(translate('completed.labels.profit'))}</span>
+              <span class="value">${escapeHtml(profitValue)}</span>
+              <span class="subvalue">${escapeHtml(returnDisplay)}</span>
+            </div>
+          </div>
+          <div class="trade-card-footer">
+            <span>${escapeHtml(translate('completed.opened'))} ${escapeHtml(openedAt)}</span>
+            <span>${escapeHtml(translate('completed.duration'))} ${escapeHtml(duration)}</span>
+          </div>
+        `;
+        completedTradesList.appendChild(card);
       }
     }
 
@@ -2385,6 +2728,7 @@
         await loadPlans();
         await loadRules();
         await loadOrders();
+        await loadCompletedTrades(true);
         await refreshApiKeysStatus();
         if (state.ordersTimer) clearInterval(state.ordersTimer);
         state.ordersTimer = setInterval(() => loadOrders(true), 8000);
@@ -2439,6 +2783,24 @@
       } finally {
         await refreshRuleErrors();
         state.isOrdersLoading = false;
+      }
+    }
+
+    async function loadCompletedTrades(silent) {
+      if (state.isCompletedTradesLoading) return;
+      state.isCompletedTradesLoading = true;
+      try {
+        const data = await api('/api/trades/completed');
+        const trades = Array.isArray(data?.trades) ? data.trades : [];
+        const errors = Array.isArray(data?.errors) ? data.errors : [];
+        renderCompletedTrades(trades, errors);
+        if (!silent) setStatus(translate('status.completedRefreshed'), 'info');
+      } catch (err) {
+        console.error('completed trades error', err);
+        renderCompletedTrades([], [err.message]);
+        setStatus(err.message, 'error');
+      } finally {
+        state.isCompletedTradesLoading = false;
       }
     }
 
@@ -2651,10 +3013,14 @@
       state.rules = [];
       state.hasKeys = false;
       state.lastRuleErrorsDigest = '';
+      state.completedTrades = [];
+      state.completedTradesErrors = [];
+      state.isCompletedTradesLoading = false;
       if (state.ordersTimer) clearInterval(state.ordersTimer);
       updateEntitlements(null);
       renderTables();
       renderOrders([]);
+      renderCompletedTrades([]);
       showLanding();
     }
 
@@ -2706,6 +3072,7 @@
     syncRulesBtn.addEventListener('click', syncRules);
     aiForm.addEventListener('submit', generateAiRule);
     refreshOrdersBtn.addEventListener('click', () => loadOrders());
+    refreshCompletedBtn.addEventListener('click', () => loadCompletedTrades());
     languageToggle.addEventListener('click', () => {
       setLanguage(state.language === 'ar' ? 'en' : 'ar');
     });
@@ -2716,6 +3083,7 @@
       applyTranslations();
       renderTables();
       renderOrders([]);
+      renderCompletedTrades([]);
       await loadPlans();
       if (state.token) {
         try {
