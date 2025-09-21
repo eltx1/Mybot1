@@ -3,6 +3,46 @@ import fetch from "node-fetch";
 import fs from "fs";
 
 const DEFAULT_BASE = process.env.BINANCE_BASE || "https://api.binance.com";
+const DEFAULT_RETRY_ATTEMPTS = Math.max(1, Number(process.env.BINANCE_RETRY_ATTEMPTS || 3));
+const RETRY_BACKOFF_BASE = Math.max(50, Number(process.env.BINANCE_RETRY_BACKOFF || 200));
+const AVG_PRICE_TTL = Math.max(1000, Number(process.env.BINANCE_AVG_PRICE_TTL || 5000));
+const EXCHANGE_INFO_TTL = Math.max(60000, Number(process.env.BINANCE_EXCHANGE_INFO_TTL || 300000));
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(url, options) {
+  let attempt = 0;
+  let lastError;
+  while (attempt < DEFAULT_RETRY_ATTEMPTS) {
+    try {
+      const response = await fetch(url, options);
+      if (response.status === 429 || response.status === 418) {
+        lastError = new Error(`Rate limited with status ${response.status}`);
+        const retryAfter = Number(response.headers.get("Retry-After"));
+        const delay = Number.isFinite(retryAfter) ? retryAfter * 1000 : RETRY_BACKOFF_BASE * Math.pow(2, attempt);
+        await sleep(delay);
+        attempt += 1;
+        continue;
+      }
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `${response.status} error from Binance`);
+      }
+      return response;
+    } catch (err) {
+      lastError = err;
+      attempt += 1;
+      if (attempt >= DEFAULT_RETRY_ATTEMPTS) {
+        break;
+      }
+      const delay = RETRY_BACKOFF_BASE * Math.pow(2, attempt - 1);
+      await sleep(Math.min(delay, 5000));
+    }
+  }
+  throw lastError;
+}
 
 function loadFallbackCredentials() {
   try {
@@ -27,6 +67,24 @@ export function createBinanceClient(options = {}) {
 
   let apiKey = providedKey;
   let apiSecret = providedSecret;
+
+  const caches = {
+    avgPrice: new Map(),
+    exchangeInfo: new Map()
+  };
+
+  function getCached(map, key) {
+    const entry = map.get(key);
+    if (!entry) return null;
+    if (entry.expiresAt > Date.now()) {
+      return { value: entry.value, fresh: true };
+    }
+    return { value: entry.value, fresh: false };
+  }
+
+  function setCached(map, key, value, ttl) {
+    map.set(key, { value, expiresAt: Date.now() + ttl });
+  }
 
   if ((!apiKey || !apiSecret) && fallbackToFile) {
     const fallback = loadFallbackCredentials();
@@ -85,11 +143,8 @@ export function createBinanceClient(options = {}) {
       headers["Content-Type"] = "application/x-www-form-urlencoded";
     }
 
-    const response = await fetch(url, { method, headers, body });
+    const response = await fetchWithRetry(url, { method, headers, body });
     const text = await response.text();
-    if (!response.ok) {
-      throw new Error(text || `${response.status} error from Binance`);
-    }
     try {
       return JSON.parse(text);
     } catch {
@@ -98,11 +153,39 @@ export function createBinanceClient(options = {}) {
   }
 
   return {
-    avgPrice(symbol) {
-      return request(`/api/v3/avgPrice`, "GET", { symbol });
+    async avgPrice(symbol) {
+      const key = String(symbol || "").toUpperCase();
+      const cached = getCached(caches.avgPrice, key);
+      if (cached?.fresh) {
+        return cached.value;
+      }
+      try {
+        const result = await request(`/api/v3/avgPrice`, "GET", { symbol: key });
+        setCached(caches.avgPrice, key, result, AVG_PRICE_TTL);
+        return result;
+      } catch (err) {
+        if (cached?.value) {
+          return cached.value;
+        }
+        throw err;
+      }
     },
-    exchangeInfo(symbol) {
-      return request(`/api/v3/exchangeInfo`, "GET", { symbol });
+    async exchangeInfo(symbol) {
+      const key = String(symbol || "").toUpperCase();
+      const cached = getCached(caches.exchangeInfo, key || "__all__");
+      if (cached?.fresh) {
+        return cached.value;
+      }
+      try {
+        const result = await request(`/api/v3/exchangeInfo`, "GET", { symbol: key });
+        setCached(caches.exchangeInfo, key || "__all__", result, EXCHANGE_INFO_TTL);
+        return result;
+      } catch (err) {
+        if (cached?.value) {
+          return cached.value;
+        }
+        throw err;
+      }
     },
     account() {
       return request(`/api/v3/account`, "GET", {}, true);
