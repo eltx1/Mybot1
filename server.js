@@ -350,18 +350,61 @@ function safeJSONParse(value) {
   }
 }
 
-function generateCryptomusSignature(payload) {
-  if (!payload || typeof payload !== "object") {
-    return createHash("md5").update("" + CRYPTOMUS_PAYMENT_KEY).digest("hex");
+function canonicaliseCryptomusPayload(value) {
+  if (!value || typeof value !== "object") return value;
+  if (Array.isArray(value)) {
+    return value.map(canonicaliseCryptomusPayload);
   }
-  const base64 = Buffer.from(JSON.stringify(payload)).toString("base64");
+  const sorted = {};
+  for (const key of Object.keys(value).sort()) {
+    sorted[key] = canonicaliseCryptomusPayload(value[key]);
+  }
+  return sorted;
+}
+
+function cryptomusPayloadBuffer(payload, rawBody) {
+  if (rawBody && rawBody.length) {
+    return Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(String(rawBody));
+  }
+  if (Buffer.isBuffer(payload)) {
+    return payload;
+  }
+  if (typeof payload === "string") {
+    return Buffer.from(payload, "utf8");
+  }
+  if (!payload || typeof payload !== "object") {
+    return Buffer.from("{}", "utf8");
+  }
+  try {
+    const canonical = canonicaliseCryptomusPayload(payload);
+    return Buffer.from(JSON.stringify(canonical));
+  } catch (err) {
+    console.error("Failed to serialise Cryptomus payload", err.message);
+    return Buffer.from("{}", "utf8");
+  }
+}
+
+function generateCryptomusSignature(payload, rawBody) {
+  const buffer = cryptomusPayloadBuffer(payload, rawBody);
+  const base64 = buffer.toString("base64");
   return createHash("md5").update(base64 + String(CRYPTOMUS_PAYMENT_KEY || "")).digest("hex");
 }
 
-function verifyCryptomusSignature(payload, signature) {
+function verifyCryptomusSignature(payload, signature, rawBody) {
   if (!signature) return false;
-  const expected = generateCryptomusSignature(payload);
+  const expected = generateCryptomusSignature(payload, rawBody);
   return typeof signature === "string" && signature.toLowerCase() === expected.toLowerCase();
+}
+
+function extractCryptomusResult(payload) {
+  if (!payload || typeof payload !== "object") return {};
+  const candidates = [payload.result, payload.data];
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === "object") {
+      return candidate;
+    }
+  }
+  return payload;
 }
 
 function createSubscriptionReference(userId, planId, provider) {
@@ -1534,16 +1577,30 @@ app.post("/api/billing/checkout", authRequired(handleAsync(async (req, res) => {
       body: JSON.stringify(invoicePayload)
     });
     const invoiceData = await response.json().catch(() => ({}));
-    if (!response.ok) {
+    const invoiceResult = extractCryptomusResult(invoiceData);
+    const stateToken = String(invoiceData?.state ?? invoiceData?.status ?? invoiceResult?.state ?? invoiceResult?.status ?? "").toLowerCase();
+    const failedStates = new Set(["error", "failed", "canceled", "cancelled", "expired"]);
+    if (!response.ok || failedStates.has(stateToken)) {
       console.error("Cryptomus checkout error", invoiceData);
-      const errorMessage = invoiceData?.message || invoiceData?.error || "Cryptomus API error";
+      const errorMessage = invoiceData?.message || invoiceData?.error || invoiceResult?.message || invoiceResult?.error || "Cryptomus API error";
+      return res.status(response.ok ? 502 : response.status).json({ error: errorMessage });
+    }
+    const paymentUrl = invoiceResult?.result_url
+      || invoiceResult?.url
+      || invoiceResult?.payment_url
+      || invoiceResult?.redirect_url
+      || invoiceResult?.checkout_url;
+    if (!paymentUrl) {
+      const errorMessage = invoiceData?.message || invoiceData?.error || "Cryptomus did not return a payment URL";
       return res.status(502).json({ error: errorMessage });
     }
-    const paymentUrl = invoiceData?.result_url || invoiceData?.url || invoiceData?.payment_url;
-    if (!paymentUrl) {
-      return res.status(502).json({ error: "Cryptomus did not return a payment URL" });
-    }
-    const invoiceId = invoiceData?.uuid || invoiceData?.payment_uuid || invoiceData?.invoice_uuid || null;
+    const invoiceId = invoiceResult?.uuid
+      || invoiceResult?.payment_uuid
+      || invoiceResult?.invoice_uuid
+      || invoiceData?.uuid
+      || invoiceData?.payment_uuid
+      || invoiceData?.invoice_uuid
+      || null;
     await createPendingSubscription({
       userId: req.user.id,
       planId: plan.id,
@@ -1554,7 +1611,8 @@ app.post("/api/billing/checkout", authRequired(handleAsync(async (req, res) => {
       metadata: {
         provider: SUBSCRIPTION_PROVIDERS.CRYPTOMUS,
         invoiceId,
-        response: invoiceData
+        response: invoiceData,
+        result: invoiceResult
       },
       providerSessionId: invoiceId,
       providerInvoiceId: invoiceId
@@ -1562,7 +1620,7 @@ app.post("/api/billing/checkout", authRequired(handleAsync(async (req, res) => {
     checkoutPayload = {
       url: paymentUrl,
       invoiceId,
-      address: invoiceData?.address,
+      address: invoiceResult?.address || invoiceData?.address,
       reference
     };
   }
@@ -1995,27 +2053,35 @@ app.post("/webhooks/cryptomus", async (req, res) => {
   if (CRYPTOMUS_MERCHANT_ID && merchantHeader && merchantHeader !== CRYPTOMUS_MERCHANT_ID) {
     return res.status(400).json({ error: "Invalid merchant" });
   }
-  if (!verifyCryptomusSignature(payload, signature)) {
+  const rawBody = req.rawBody;
+  if (!verifyCryptomusSignature(payload, signature, rawBody)) {
     console.error("Cryptomus webhook signature mismatch", payload);
     return res.status(400).json({ error: "Invalid signature" });
   }
 
-  const reference = payload?.order_id || payload?.orderId || payload?.merchant_order_id;
+  const result = extractCryptomusResult(payload);
+
+  const reference = payload?.order_id
+    || payload?.orderId
+    || payload?.merchant_order_id
+    || result?.order_id
+    || result?.orderId
+    || result?.merchant_order_id;
   if (!reference) {
     return res.json({ ok: true });
   }
 
-  const status = String(payload?.status || payload?.state || "").toLowerCase();
+  const status = String(payload?.status || payload?.state || result?.status || result?.state || "").toLowerCase();
   const successfulStates = new Set(["paid", "paid_over", "paid_partially", "success"]);
   const failedStates = new Set(["cancelled", "canceled", "failed", "expired", "error"]);
 
   try {
     if (successfulStates.has(status)) {
-      const amount = Number(payload?.amount || payload?.paid_amount || payload?.payment_amount);
+      const amount = Number(payload?.amount || payload?.paid_amount || payload?.payment_amount || result?.amount || result?.paid_amount || result?.payment_amount);
       await activateSubscription(reference, {
-        providerInvoiceId: payload?.uuid || payload?.payment_uuid || payload?.invoice_uuid || null,
+        providerInvoiceId: payload?.uuid || payload?.payment_uuid || payload?.invoice_uuid || result?.uuid || result?.payment_uuid || result?.invoice_uuid || null,
         amountUSD: Number.isFinite(amount) ? amount : undefined,
-        currency: payload?.currency || "USD",
+        currency: payload?.currency || result?.currency || "USD",
         metadata: payload
       });
     } else if (failedStates.has(status)) {
