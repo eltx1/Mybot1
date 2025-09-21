@@ -436,6 +436,272 @@
 
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    .pricing {
+      padding: clamp(48px, 8vw, 96px) clamp(20px, 8vw, 120px);
+      background: #f7f8fe;
+    }
+
+    .pricing-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      gap: 28px;
+      text-align: center;
+    }
+
+    .pricing-grid {
+      display: grid;
+      gap: 24px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+
+    .pricing-grid.compact {
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+
+    .plan-card {
+      background: var(--surface-strong);
+      border-radius: 24px;
+      padding: 28px;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      box-shadow: 0 24px 55px rgba(15, 23, 42, 0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      text-align: left;
+    }
+
+    .pricing-grid.compact .plan-card {
+      box-shadow: none;
+      border: 1px solid rgba(148, 163, 184, 0.24);
+      padding: 22px;
+    }
+
+    .plan-card.current {
+      border-color: var(--accent);
+      box-shadow: 0 32px 60px rgba(37, 99, 235, 0.18);
+    }
+
+    .plan-card.pending {
+      border-color: rgba(234, 179, 8, 0.6);
+      box-shadow: 0 28px 60px rgba(234, 179, 8, 0.18);
+    }
+
+    .plan-card.pending .plan-badge {
+      background: rgba(234, 179, 8, 0.16);
+      color: #b45309;
+    }
+
+    .plan-card h3 {
+      margin: 0;
+      font-size: 1.25rem;
+    }
+
+    .plan-price {
+      font-size: 2.2rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .plan-price span {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-left: 6px;
+    }
+
+    .plan-feature-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 10px;
+    }
+
+    .plan-feature-list li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.95rem;
+    }
+
+    .plan-feature-list li::before {
+      content: "•";
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .plan-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .plan-actions .btn {
+      flex: 1 1 180px;
+    }
+
+    .plan-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: var(--accent-soft);
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .plan-warning {
+      display: none;
+      margin: 12px 0;
+      padding: 10px 14px;
+      border-radius: 12px;
+      background: rgba(220, 38, 38, 0.12);
+      color: var(--danger);
+      font-size: 0.9rem;
+    }
+
+    .plan-warning.visible {
+      display: block;
+    }
+
+    .plan-warning.info {
+      background: rgba(37, 99, 235, 0.12);
+      color: var(--accent);
+    }
+
+    .subscription-card {
+      position: relative;
+    }
+
+    .card.full {
+      grid-column: 1 / -1;
+    }
+
+    .subscription-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      background: rgba(37, 99, 235, 0.12);
+      color: var(--accent);
+    }
+
+    .status-pill.pending {
+      background: rgba(251, 191, 36, 0.18);
+      color: #b45309;
+    }
+
+    .status-pill.expired {
+      background: rgba(220, 38, 38, 0.12);
+      color: var(--danger);
+    }
+
+    .subscription-body {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .subscription-summary {
+      display: grid;
+      gap: 6px;
+    }
+
+    .subscription-summary strong {
+      font-size: 1rem;
+    }
+
+    .subscription-meta {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .subscription-features {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .subscription-features .feature {
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      background: rgba(37, 99, 235, 0.12);
+      color: var(--accent);
+    }
+
+    .subscription-features .feature.disabled {
+      background: rgba(220, 38, 38, 0.12);
+      color: var(--danger);
+    }
+
+    .subscription-actions {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .subscription-plans {
+      margin-top: 8px;
+    }
+
+    .subscription-plans h3,
+    .subscription-history h3 {
+      margin: 0 0 12px;
+      font-size: 1rem;
+    }
+
+    .subscription-history {
+      margin-top: 20px;
+    }
+
+    .history-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 10px;
+    }
+
+    .history-list li {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      background: #f9fafc;
+      font-size: 0.9rem;
+    }
+
+    .history-list li .label {
+      font-weight: 600;
+    }
+
+    .history-list li .meta {
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    .provider-label {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
     .switch {
       position: relative;
       display: inline-block;
@@ -616,6 +882,14 @@
       </div>
     </section>
 
+    <section class="pricing" id="pricingSection">
+      <div class="pricing-inner">
+        <h2 data-i18n="pricing.title">Plans built for every trader</h2>
+        <p class="muted" data-i18n="pricing.subtitle">Unlock manual or AI-powered automation by choosing the package that matches your strategy.</p>
+        <div class="pricing-grid" id="pricingGrid"></div>
+      </div>
+    </section>
+
     <section class="auth-section" id="authSection">
       <div class="auth-card">
         <div class="auth-copy">
@@ -672,6 +946,26 @@
       <div id="status" class="status" role="status" aria-live="polite"></div>
 
       <section class="dashboard-grid">
+        <article class="card subscription-card full" id="subscriptionCard">
+          <div class="subscription-header">
+            <h2 data-i18n="subscription.title">Your plan</h2>
+            <span class="status-pill" id="subscriptionStatus"></span>
+          </div>
+          <div class="subscription-body">
+            <div class="subscription-summary" id="subscriptionSummary"></div>
+            <div class="subscription-features" id="subscriptionFeatures"></div>
+            <div class="plan-warning" id="subscriptionWarning"></div>
+          </div>
+          <div class="subscription-actions" id="subscriptionActions"></div>
+          <div class="subscription-plans">
+            <h3 data-i18n="subscription.availablePlans">Available plans</h3>
+            <div class="pricing-grid compact" id="dashboardPlans"></div>
+          </div>
+          <div class="subscription-history">
+            <h3 data-i18n="subscription.historyTitle">Recent payments</h3>
+            <ul class="history-list" id="subscriptionHistory"></ul>
+          </div>
+        </article>
         <article class="card">
           <h2 data-i18n="api.title">Connect Binance keys</h2>
           <p data-i18n="api.description">Add your spot API credentials to activate the engine. Keys remain encrypted and you can revoke them any time.</p>
@@ -698,6 +992,7 @@
         <article class="card">
           <h2 data-i18n="manual.title">Manual rule</h2>
           <p data-i18n="manual.description">Create a dip buying strategy with your preferred take-profit target.</p>
+          <div class="plan-warning" id="manualRestriction"></div>
           <form id="manualForm">
             <div class="form-row">
               <div>
@@ -729,6 +1024,7 @@
         <article class="card">
           <h2 data-i18n="ai.title">AI-powered rule</h2>
           <p data-i18n="ai.description">Request a market-ready spot strategy backed by real-time research.</p>
+          <div class="plan-warning" id="aiRestriction"></div>
           <form id="aiForm">
             <div>
               <label for="aiBudget" data-i18n="ai.budgetLabel">AI budget (USDT)</label>
@@ -836,6 +1132,16 @@
           securityCopy: "Connect Binance spot keys with encryption. You are always able to rotate or disconnect in one click.",
           aiTitle: "AI market insights",
           aiCopy: "Leverage live market research prompts to craft strategies backed by up-to-date data."
+        },
+        pricing: {
+          title: "Plans built for every trader",
+          subtitle: "Unlock manual or AI-powered automation by choosing the package that matches your strategy.",
+          manualFeature: "Manual rules: {{count}} active",
+          aiFeature: "AI rules: {{count}} active",
+          aiDisabled: "AI rules not included",
+          manualOnly: "Manual automation included",
+          duration: "{{days}} day subscription",
+          price: "${{price}}"
         },
         auth: {
           title: "Your personal trading cockpit",
@@ -949,7 +1255,43 @@
           ruleActivated: "Rule enabled.",
           rulePaused: "Rule paused.",
           ruleDeleted: "Rule deleted.",
-          aiBudgetInvalid: "Enter a valid AI budget."
+          aiBudgetInvalid: "Enter a valid AI budget.",
+          manualLocked: "Manual rules are disabled for your current plan.",
+          aiLocked: "AI rules are disabled for your current plan.",
+          manualLimit: "Your plan allows up to {{count}} manual rules.",
+          aiLimit: "Your plan allows up to {{count}} AI rules.",
+          checkoutStarted: "Redirecting you to complete the payment...",
+          checkoutError: "Unable to start the checkout. Please try again."
+        },
+        subscription: {
+          title: "Your plan",
+          statusActive: "Active",
+          statusExpired: "Expired",
+          statusPending: "Awaiting payment",
+          statusNone: "No active subscription",
+          noPlan: "No active subscription. Pick a plan to unlock automation.",
+          currentPlan: "Current plan: {{name}}",
+          expires: "Expires on {{date}}",
+          daysLeft: "{{count}} days remaining",
+          daysLeftOne: "1 day remaining",
+          manualFeature: "Manual rules: {{used}} / {{limit}} active",
+          manualUnlimited: "Manual rules enabled",
+          aiFeature: "AI rules: {{used}} / {{limit}} active",
+          aiUnlimited: "AI rules enabled",
+          manualDisabled: "Manual rules are disabled for your current plan.",
+          aiDisabled: "AI rules are disabled for your current plan.",
+          availablePlans: "Available plans",
+          chooseProvider: "Checkout with",
+          payWithStripe: "Pay with card (Stripe)",
+          payWithCryptomus: "Pay with crypto (Cryptomus)",
+          loginRequired: "Sign in to subscribe to a plan.",
+          renewing: "Processing payment confirmation...",
+          historyTitle: "Recent payments",
+          historyEmpty: "No subscription history yet.",
+          pendingNotice: "Awaiting payment confirmation for {{name}}.",
+          providerStripe: "Stripe",
+          providerCryptomus: "Cryptomus",
+          noPlans: "Plans will be available soon."
         },
         ruleErrors: {
           symbolNotWhitelisted: "Binance rejected {{symbol}} because it isn't whitelisted for your API key. Enable the pair in your Binance API restrictions and try again."
@@ -975,6 +1317,16 @@
           securityCopy: "اربط مفاتيح Binance Spot بتشفير كامل مع إمكانية الفصل أو التدوير بضغطة زر.",
           aiTitle: "رؤى سوقية بالذكاء الاصطناعي",
           aiCopy: "استفد من برومبتات بحث مباشرة لصياغة استراتيجيات مبنية على بيانات محدثة."
+        },
+        pricing: {
+          title: "خطط تناسب كل متداول",
+          subtitle: "اختر الباقة التي تناسب استراتيجيتك لتفعيل القواعد اليدوية أو الذكاء الاصطناعي.",
+          manualFeature: "القواعد اليدوية: {{count}} مفعلة",
+          aiFeature: "قواعد الذكاء الاصطناعي: {{count}} مفعلة",
+          aiDisabled: "قواعد الذكاء الاصطناعي غير متضمنة",
+          manualOnly: "تشمل القواعد اليدوية",
+          duration: "اشتراك لمدة {{days}} يوم",
+          price: "{{price}} دولار"
         },
         auth: {
           title: "قمرة القيادة الخاصة بك",
@@ -1088,7 +1440,43 @@
           ruleActivated: "تم تفعيل القاعدة.",
           rulePaused: "تم إيقاف القاعدة.",
           ruleDeleted: "تم حذف القاعدة.",
-          aiBudgetInvalid: "أدخل ميزانية صحيحة للذكاء الاصطناعي."
+          aiBudgetInvalid: "أدخل ميزانية صحيحة للذكاء الاصطناعي.",
+          manualLocked: "القواعد اليدوية غير متاحة في باقتك الحالية.",
+          aiLocked: "قواعد الذكاء الاصطناعي غير متاحة في باقتك الحالية.",
+          manualLimit: "باقتك تسمح حتى {{count}} من القواعد اليدوية.",
+          aiLimit: "باقتك تسمح حتى {{count}} من قواعد الذكاء الاصطناعي.",
+          checkoutStarted: "جاري تحويلك لإتمام الدفع...",
+          checkoutError: "تعذر بدء عملية الدفع، حاول مرة أخرى."
+        },
+        subscription: {
+          title: "باقتك",
+          statusActive: "مفعلة",
+          statusExpired: "منتهية",
+          statusPending: "بانتظار الدفع",
+          statusNone: "لا توجد باقة مفعلة",
+          noPlan: "لا توجد باقة مفعلة. اختر الباقة المناسبة لتفعيل الخصائص.",
+          currentPlan: "الباقة الحالية: {{name}}",
+          expires: "تنتهي في {{date}}",
+          daysLeft: "متبقي {{count}} يومًا",
+          daysLeftOne: "متبقي يوم واحد",
+          manualFeature: "القواعد اليدوية: {{used}} / {{limit}} مفعلة",
+          manualUnlimited: "القواعد اليدوية مفعلة",
+          aiFeature: "قواعد الذكاء الاصطناعي: {{used}} / {{limit}} مفعلة",
+          aiUnlimited: "قواعد الذكاء الاصطناعي مفعلة",
+          manualDisabled: "القواعد اليدوية غير متاحة في باقتك الحالية.",
+          aiDisabled: "قواعد الذكاء الاصطناعي غير متاحة في باقتك الحالية.",
+          availablePlans: "الباقات المتاحة",
+          chooseProvider: "اختر طريقة الدفع",
+          payWithStripe: "الدفع بالبطاقة (Stripe)",
+          payWithCryptomus: "الدفع بالعملات الرقمية (Cryptomus)",
+          loginRequired: "سجل الدخول للاشتراك في باقة.",
+          renewing: "جاري تأكيد عملية الدفع...",
+          historyTitle: "سجل الدفعات",
+          historyEmpty: "لا يوجد سجل دفعات بعد.",
+          pendingNotice: "بانتظار تأكيد الدفع لباقـة {{name}}.",
+          providerStripe: "سترايب",
+          providerCryptomus: "كريبتومس",
+          noPlans: "سيتم إتاحة الباقات قريبًا."
         },
         ruleErrors: {
           symbolNotWhitelisted: "رفضت باينانس تنفيذ {{symbol}} لأن الزوج غير مفعّل لمفتاح الـ API الخاص بك. فعّل الزوج من إعدادات قيود مفاتيح باينانس ثم أعد المحاولة."
@@ -1101,6 +1489,9 @@
       token: localStorage.getItem('mybot_token') || '',
       user: null,
       rules: [],
+      plans: [],
+      providers: { stripe: false, cryptomus: false },
+      entitlements: null,
       ordersTimer: null,
       statusTimer: null,
       hasKeys: false,
@@ -1131,6 +1522,8 @@
     const syncRulesBtn = document.getElementById('syncRules');
     const aiForm = document.getElementById('aiForm');
     const aiGenerateBtn = document.getElementById('aiGenerate');
+    const aiBudgetInput = document.getElementById('aiBudget');
+    const aiModelInput = document.getElementById('aiModel');
     const manualTableBody = document.querySelector('#manualRulesTable tbody');
     const aiTableBody = document.querySelector('#aiRulesTable tbody');
     const ordersTableBody = document.querySelector('#ordersTable tbody');
@@ -1138,6 +1531,17 @@
     const aiCountEl = document.getElementById('aiCount');
     const refreshOrdersBtn = document.getElementById('refreshOrders');
     const languageToggle = document.getElementById('languageToggle');
+    const pricingGrid = document.getElementById('pricingGrid');
+    const dashboardPlansGrid = document.getElementById('dashboardPlans');
+    const subscriptionStatus = document.getElementById('subscriptionStatus');
+    const subscriptionSummary = document.getElementById('subscriptionSummary');
+    const subscriptionFeaturesEl = document.getElementById('subscriptionFeatures');
+    const subscriptionWarning = document.getElementById('subscriptionWarning');
+    const subscriptionActions = document.getElementById('subscriptionActions');
+    const subscriptionHistory = document.getElementById('subscriptionHistory');
+    const manualRestriction = document.getElementById('manualRestriction');
+    const aiRestriction = document.getElementById('aiRestriction');
+    const subscriptionCard = document.getElementById('subscriptionCard');
 
     function resolveTranslation(lang, key) {
       const fallback = translations.en;
@@ -1192,6 +1596,9 @@
       apiKeysStatus.textContent = statusText;
       apiKeysStatus.className = `pill ${state.hasKeys ? 'success' : 'danger'}`;
 
+      renderPricingCards();
+      renderDashboardPlans();
+      renderSubscription();
       renderTables();
       renderOrders(currentOrdersCache);
     }
@@ -1263,10 +1670,27 @@
       return list;
     }
 
+    async function loadPlans() {
+      try {
+        const data = await api('/api/plans');
+        state.plans = Array.isArray(data?.plans) ? data.plans : [];
+        state.providers = {
+          stripe: Boolean(data?.providers?.stripe),
+          cryptomus: Boolean(data?.providers?.cryptomus)
+        };
+        renderPricingCards();
+        renderDashboardPlans();
+      } catch (err) {
+        console.error('plan load error', err);
+        state.plans = Array.isArray(state.plans) ? state.plans : [];
+      }
+    }
+
     function renderTables() {
       renderManualRules();
       renderAiRules();
       announceRuleErrors();
+      applyEntitlementsUI();
     }
 
     function escapeHtml(str) {
@@ -1290,6 +1714,15 @@
       return `${formatNumber(num)} USDT`;
     }
 
+    function formatUsageCount(active, limit) {
+      const used = Number(active) || 0;
+      const cap = Number(limit);
+      if (Number.isFinite(cap) && cap >= 0) {
+        return `${used}/${cap}`;
+      }
+      return `${used}/0`;
+    }
+
     function formatPercent(v) {
       const num = Number(v);
       if (!Number.isFinite(num)) return '-';
@@ -1301,6 +1734,20 @@
       const d = new Date(Number(ms));
       if (Number.isNaN(d.getTime())) return '-';
       return d.toLocaleString(state.language === 'ar' ? 'ar-EG' : undefined);
+    }
+
+    function formatUSD(value) {
+      const num = Number(value);
+      if (!Number.isFinite(num)) return '$0';
+      const opts = num % 1 ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : { minimumFractionDigits: 0, maximumFractionDigits: 0 };
+      return `$${Math.abs(num).toLocaleString(undefined, opts)}`;
+    }
+
+    function formatIsoDate(value) {
+      if (!value) return '-';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return '-';
+      return date.toLocaleDateString(state.language === 'ar' ? 'ar-EG' : undefined, { year: 'numeric', month: 'short', day: 'numeric' });
     }
 
     function resolveRuleError(rule) {
@@ -1335,7 +1782,10 @@
 
     function renderManualRules() {
       const manualRules = state.rules.filter(r => (r.type || '').toLowerCase() === 'manual');
-      manualCountEl.textContent = manualRules.length;
+      const ent = state.entitlements || {};
+      const manualLimit = Number(ent?.manualLimit);
+      const manualEnabled = Boolean(ent && ent.manualEnabled);
+      const activeManual = state.rules.filter(r => (r.type || '').toLowerCase() === 'manual' && r.enabled).length;
       manualTableBody.innerHTML = '';
       if (!manualRules.length) {
         const tr = document.createElement('tr');
@@ -1348,6 +1798,8 @@
         const tr = document.createElement('tr');
         if (!rule.enabled) tr.classList.add('is-paused');
         tr.dataset.id = rule.id;
+        const capReached = Number.isFinite(manualLimit) && manualLimit > 0 && activeManual >= manualLimit;
+        const toggleDisabled = !manualEnabled || (!rule.enabled && capReached);
         const manualError = resolveRuleError(rule);
         const manualErrorHtml = manualError ? `<div class="rule-error">${escapeHtml(manualError)}</div>` : '';
         tr.innerHTML = `
@@ -1362,7 +1814,7 @@
           <td data-label="${escapeHtml(translate('manual.table.budget'))}">${formatCurrency(rule.budgetUSDT)}</td>
           <td data-label="${escapeHtml(translate('manual.table.status'))}">
             <label class="switch">
-              <input type="checkbox" data-action="toggle" data-id="${rule.id}" ${rule.enabled ? 'checked' : ''}>
+              <input type="checkbox" data-action="toggle" data-id="${rule.id}" ${rule.enabled ? 'checked' : ''} ${toggleDisabled ? 'disabled' : ''}>
               <span class="slider"></span>
             </label>
           </td>
@@ -1376,7 +1828,10 @@
 
     function renderAiRules() {
       const aiRules = state.rules.filter(r => (r.type || '').toLowerCase() === 'ai');
-      aiCountEl.textContent = aiRules.length;
+      const ent = state.entitlements || {};
+      const aiLimit = Number(ent?.aiLimit);
+      const aiEnabled = Boolean(ent && ent.aiEnabled);
+      const activeAi = state.rules.filter(r => (r.type || '').toLowerCase() === 'ai' && r.enabled).length;
       aiTableBody.innerHTML = '';
       if (!aiRules.length) {
         const tr = document.createElement('tr');
@@ -1391,6 +1846,8 @@
         tr.dataset.id = rule.id;
         const aiError = resolveRuleError(rule);
         const aiErrorHtml = aiError ? `<div class="rule-error">${escapeHtml(aiError)}</div>` : '';
+        const capReached = Number.isFinite(aiLimit) && aiLimit > 0 && activeAi >= aiLimit;
+        const toggleDisabled = !aiEnabled || (!rule.enabled && capReached);
         tr.innerHTML = `
           <td data-label="${escapeHtml(translate('ai.table.rule'))}">
             <div class="symbol">${escapeHtml(rule.symbol)}</div>
@@ -1405,7 +1862,7 @@
           <td data-label="${escapeHtml(translate('ai.table.budget'))}">${formatCurrency(rule.budgetUSDT)}</td>
           <td data-label="${escapeHtml(translate('ai.table.status'))}">
             <label class="switch">
-              <input type="checkbox" data-action="toggle" data-id="${rule.id}" ${rule.enabled ? 'checked' : ''}>
+              <input type="checkbox" data-action="toggle" data-id="${rule.id}" ${rule.enabled ? 'checked' : ''} ${toggleDisabled ? 'disabled' : ''}>
               <span class="slider"></span>
             </label>
           </td>
@@ -1447,6 +1904,387 @@
             <td data-label="${escapeHtml(translate('orders.table.updated'))}">${formatDate(order.updateTime || order.time)}</td>
           `;
           ordersTableBody.appendChild(tr);
+        }
+      }
+    }
+
+    function updateEntitlementsFromResponse(payload) {
+      if (!payload) return;
+      if (payload.subscription) {
+        updateEntitlements(payload.subscription);
+        return;
+      }
+      if (payload.entitlements) {
+        updateEntitlements(payload.entitlements);
+      }
+    }
+
+    function updateEntitlements(entitlements) {
+      if (entitlements && typeof entitlements === 'object') {
+        state.entitlements = entitlements;
+      } else {
+        state.entitlements = null;
+      }
+      renderSubscription();
+      renderDashboardPlans();
+      renderPricingCards();
+      applyEntitlementsUI();
+    }
+
+    function applyEntitlementsUI() {
+      const ent = state.entitlements || {};
+      const hasPlan = Boolean(ent && ent.plan);
+      const manualEnabled = Boolean(state.token && ent && ent.manualEnabled);
+      const aiEnabled = Boolean(state.token && ent && ent.aiEnabled);
+      const manualLimit = Number(ent?.manualLimit);
+      const aiLimit = Number(ent?.aiLimit);
+      const activeManual = state.rules.filter(r => (r.type || '').toLowerCase() === 'manual' && r.enabled).length;
+      const activeAi = state.rules.filter(r => (r.type || '').toLowerCase() === 'ai' && r.enabled).length;
+      const manualCapReached = manualEnabled && Number.isFinite(manualLimit) && manualLimit >= 0 && activeManual >= manualLimit;
+      const aiCapReached = aiEnabled && Number.isFinite(aiLimit) && aiLimit >= 0 && activeAi >= aiLimit;
+
+      if (manualCountEl) {
+        manualCountEl.textContent = formatUsageCount(activeManual, manualLimit);
+      }
+      if (aiCountEl) {
+        aiCountEl.textContent = formatUsageCount(activeAi, aiLimit);
+      }
+
+      if (manualForm) {
+        const inputs = manualForm.querySelectorAll('input');
+        inputs.forEach(input => {
+          input.disabled = !manualEnabled;
+        });
+        const submit = manualForm.querySelector('button[type="submit"]');
+        if (submit) {
+          submit.disabled = !manualEnabled || manualCapReached;
+        }
+      }
+
+      if (manualRestriction) {
+        manualRestriction.classList.remove('visible', 'info');
+        manualRestriction.textContent = '';
+        let message = '';
+        let info = false;
+        if (!state.token) {
+          message = translate('subscription.loginRequired');
+        } else if (!hasPlan) {
+          message = ent && ent.pending && ent.pending.plan
+            ? translate('subscription.renewing')
+            : translate('subscription.noPlan');
+        } else if (!manualEnabled) {
+          message = translate('status.manualLocked');
+        } else if (manualCapReached && Number.isFinite(manualLimit) && manualLimit >= 0) {
+          message = translate('status.manualLimit', { count: manualLimit });
+          info = true;
+        }
+        if (message) {
+          manualRestriction.textContent = message;
+          manualRestriction.classList.add('visible');
+          if (info) manualRestriction.classList.add('info');
+        }
+      }
+
+      if (aiBudgetInput) {
+        aiBudgetInput.disabled = !aiEnabled;
+      }
+      if (aiModelInput) {
+        aiModelInput.disabled = true;
+      }
+      if (aiGenerateBtn) {
+        const loading = aiGenerateBtn.dataset.loading === 'true';
+        aiGenerateBtn.disabled = loading || !aiEnabled || aiCapReached;
+      }
+
+      if (aiRestriction) {
+        aiRestriction.classList.remove('visible', 'info');
+        aiRestriction.textContent = '';
+        let message = '';
+        let info = false;
+        if (!state.token) {
+          message = translate('subscription.loginRequired');
+        } else if (!hasPlan) {
+          message = ent && ent.pending && ent.pending.plan
+            ? translate('subscription.renewing')
+            : translate('subscription.noPlan');
+        } else if (!aiEnabled) {
+          message = translate('status.aiLocked');
+        } else if (aiCapReached && Number.isFinite(aiLimit) && aiLimit >= 0) {
+          message = translate('status.aiLimit', { count: aiLimit });
+          info = true;
+        }
+        if (message) {
+          aiRestriction.textContent = message;
+          aiRestriction.classList.add('visible');
+          if (info) aiRestriction.classList.add('info');
+        }
+      }
+    }
+
+    function renderPlanGrid(container, context) {
+      if (!container) return;
+      container.innerHTML = '';
+      const plans = Array.isArray(state.plans) ? state.plans : [];
+      if (!plans.length) {
+        const empty = document.createElement('p');
+        empty.className = 'muted';
+        empty.textContent = translate('subscription.noPlans');
+        container.appendChild(empty);
+        return;
+      }
+      const ent = state.entitlements || {};
+      const currentPlanId = ent.plan ? Number(ent.plan.id) : null;
+      const pendingPlanId = ent && ent.pending && ent.pending.plan ? Number(ent.pending.plan.id) : null;
+      const availableProviders = state.providers || {};
+      for (const plan of plans) {
+        const card = document.createElement('article');
+        card.className = 'plan-card';
+        const isCurrent = currentPlanId !== null && Number(plan.id) === currentPlanId;
+        const isPending = pendingPlanId !== null && Number(plan.id) === pendingPlanId;
+        if (isCurrent) card.classList.add('current');
+        if (isPending) card.classList.add('pending');
+        const manualLimit = Number(plan.manualLimit);
+        const aiLimit = Number(plan.aiLimit);
+        const manualText = plan.manualEnabled
+          ? (Number.isFinite(manualLimit) && manualLimit > 0
+              ? translate('pricing.manualFeature', { count: manualLimit })
+              : translate('subscription.manualUnlimited'))
+          : translate('subscription.manualDisabled');
+        const aiText = plan.aiEnabled
+          ? (Number.isFinite(aiLimit) && aiLimit > 0
+              ? translate('pricing.aiFeature', { count: aiLimit })
+              : translate('subscription.aiUnlimited'))
+          : translate('pricing.aiDisabled');
+        const durationText = translate('pricing.duration', { days: plan.durationDays });
+        const headerParts = [];
+        const badges = [];
+        const entStatus = (ent.status || '').toLowerCase();
+        if (isCurrent && entStatus === 'active') {
+          badges.push(`<span class="plan-badge">${escapeHtml(translate('subscription.statusActive'))}</span>`);
+        }
+        if (isPending) {
+          badges.push(`<span class="plan-badge">${escapeHtml(translate('subscription.statusPending'))}</span>`);
+        }
+        if (badges.length) {
+          headerParts.push(badges.join(''));
+        }
+        headerParts.push(`<h3>${escapeHtml(plan.name)}</h3>`);
+        if (plan.description) {
+          headerParts.push(`<p class="muted">${escapeHtml(plan.description)}</p>`);
+        }
+        card.innerHTML = `
+          <div>
+            ${headerParts.join('')}
+            <div class="plan-price">${escapeHtml(formatUSD(plan.priceUSD))}<span>${escapeHtml(durationText)}</span></div>
+          </div>
+          <ul class="plan-feature-list">
+            <li>${escapeHtml(manualText)}</li>
+            <li>${escapeHtml(aiText)}</li>
+            <li>${escapeHtml(durationText)}</li>
+          </ul>
+        `;
+        const actions = document.createElement('div');
+        actions.className = 'plan-actions';
+        const providers = [];
+        if (availableProviders.stripe) providers.push({ provider: 'stripe', label: translate('subscription.payWithStripe') });
+        if (availableProviders.cryptomus) providers.push({ provider: 'cryptomus', label: translate('subscription.payWithCryptomus') });
+        if (!state.token) {
+          const note = document.createElement('p');
+          note.className = 'provider-label';
+          note.textContent = translate('subscription.loginRequired');
+          actions.appendChild(note);
+        } else if (isCurrent && entStatus === 'active' && !isPending) {
+          const note = document.createElement('p');
+          note.className = 'provider-label';
+          note.textContent = translate('subscription.statusActive');
+          actions.appendChild(note);
+        } else if (isPending) {
+          const note = document.createElement('p');
+          note.className = 'provider-label';
+          note.textContent = translate('subscription.statusPending');
+          actions.appendChild(note);
+        } else if (!providers.length) {
+          const note = document.createElement('p');
+          note.className = 'provider-label';
+          note.textContent = translate('status.checkoutError');
+          actions.appendChild(note);
+        } else {
+          for (const item of providers) {
+            const btn = document.createElement('button');
+            btn.className = item.provider === 'stripe' ? 'btn primary' : 'btn ghost';
+            btn.type = 'button';
+            btn.dataset.action = 'checkout';
+            btn.dataset.planId = plan.id;
+            btn.dataset.provider = item.provider;
+            btn.textContent = item.label;
+            actions.appendChild(btn);
+          }
+        }
+        card.appendChild(actions);
+        container.appendChild(card);
+      }
+    }
+
+    function renderPricingCards() {
+      renderPlanGrid(pricingGrid, 'landing');
+    }
+
+    function renderDashboardPlans() {
+      renderPlanGrid(dashboardPlansGrid, 'dashboard');
+    }
+
+    function renderSubscription() {
+      if (!subscriptionCard) return;
+      const ent = state.entitlements || null;
+      const pending = ent && ent.pending ? ent.pending : null;
+      if (subscriptionActions) {
+        subscriptionActions.innerHTML = '';
+      }
+      if (!ent || !ent.plan) {
+        subscriptionStatus.textContent = ent && pending ? translate('subscription.statusPending') : translate('subscription.statusNone');
+        subscriptionStatus.className = `status-pill${pending ? ' pending' : ' expired'}`;
+        subscriptionSummary.innerHTML = `<p class="subscription-meta">${escapeHtml(translate('subscription.noPlan'))}</p>`;
+        subscriptionFeaturesEl.innerHTML = '';
+        subscriptionWarning.classList.remove('visible', 'info');
+        subscriptionWarning.textContent = '';
+        if (subscriptionActions) {
+          const note = document.createElement('p');
+          note.className = 'muted';
+          note.textContent = translate(
+            pending && pending.plan
+              ? 'subscription.renewing'
+              : (state.token ? 'subscription.noPlan' : 'subscription.loginRequired')
+          );
+          subscriptionActions.appendChild(note);
+        }
+      } else {
+        let statusKey = ent.status || 'active';
+        if (statusKey === 'pending' || (pending && (!ent.plan || Number(pending.id) !== Number(ent.plan.id)))) {
+          statusKey = 'pending';
+        }
+        let statusClass = 'status-pill';
+        if (statusKey === 'pending') statusClass += ' pending';
+        else if (statusKey === 'expired') statusClass += ' expired';
+        subscriptionStatus.textContent = translate(`subscription.status${statusKey.charAt(0).toUpperCase()}${statusKey.slice(1)}`);
+        subscriptionStatus.className = statusClass;
+        const summaryParts = [];
+        summaryParts.push(`<strong>${escapeHtml(translate('subscription.currentPlan', { name: ent.plan.name }))}</strong>`);
+        if (ent.expiresAt) {
+          summaryParts.push(`<span class="subscription-meta">${escapeHtml(translate('subscription.expires', { date: formatIsoDate(ent.expiresAt) }))}</span>`);
+        }
+        if (Number.isFinite(Number(ent.remainingDays)) && Number(ent.remainingDays) >= 0) {
+          const days = Number(ent.remainingDays);
+          const key = days === 1 ? 'subscription.daysLeftOne' : 'subscription.daysLeft';
+          summaryParts.push(`<span class="subscription-meta">${escapeHtml(translate(key, { count: days }))}</span>`);
+        }
+        subscriptionSummary.innerHTML = summaryParts.join(' ');
+        const activeManual = state.rules.filter(r => (r.type || '').toLowerCase() === 'manual' && r.enabled).length;
+        const activeAi = state.rules.filter(r => (r.type || '').toLowerCase() === 'ai' && r.enabled).length;
+        const manualLimit = Number(ent.manualLimit);
+        const aiLimit = Number(ent.aiLimit);
+        const manualText = ent.manualEnabled !== false
+          ? (Number.isFinite(manualLimit) && manualLimit > 0
+              ? translate('subscription.manualFeature', { used: activeManual, limit: manualLimit })
+              : translate('subscription.manualUnlimited'))
+          : translate('subscription.manualDisabled');
+        const aiText = ent.aiEnabled !== false
+          ? (Number.isFinite(aiLimit) && aiLimit > 0
+              ? translate('subscription.aiFeature', { used: activeAi, limit: aiLimit })
+              : translate('subscription.aiUnlimited'))
+          : translate('subscription.aiDisabled');
+        subscriptionFeaturesEl.innerHTML = `
+          <span class="feature${ent.manualEnabled !== false ? '' : ' disabled'}">${escapeHtml(manualText)}</span>
+          <span class="feature${ent.aiEnabled !== false ? '' : ' disabled'}">${escapeHtml(aiText)}</span>
+        `;
+        if (pending && pending.plan) {
+          subscriptionWarning.textContent = translate('subscription.pendingNotice', { name: pending.plan.name });
+          subscriptionWarning.classList.add('visible', 'info');
+        } else {
+          subscriptionWarning.classList.remove('visible', 'info');
+          subscriptionWarning.textContent = '';
+        }
+        if (subscriptionActions) {
+          if (statusKey === 'pending' || (pending && pending.plan)) {
+            const note = document.createElement('p');
+            note.className = 'muted';
+            note.textContent = translate('subscription.renewing');
+            subscriptionActions.appendChild(note);
+          }
+        }
+      }
+
+      const history = state.entitlements && Array.isArray(state.entitlements.history) ? state.entitlements.history : [];
+      subscriptionHistory.innerHTML = '';
+      if (!history.length) {
+        const item = document.createElement('li');
+        item.textContent = translate('subscription.historyEmpty');
+        subscriptionHistory.appendChild(item);
+      } else {
+        for (const entry of history) {
+          const li = document.createElement('li');
+          const statusKey = entry.status ? entry.status.toLowerCase() : '';
+          const labelKey = statusKey === 'active'
+            ? 'subscription.statusActive'
+            : statusKey === 'pending'
+              ? 'subscription.statusPending'
+              : statusKey === 'expired'
+                ? 'subscription.statusExpired'
+                : 'subscription.statusNone';
+          const label = document.createElement('span');
+          label.className = 'label';
+          label.textContent = `${entry.plan?.name || ''}`.trim();
+          const meta = document.createElement('span');
+          meta.className = 'meta';
+          const date = entry.updatedAt || entry.startedAt || entry.createdAt || entry.expiresAt;
+          meta.textContent = `${translate(labelKey)} · ${formatIsoDate(date)}`;
+          li.appendChild(label);
+          li.appendChild(meta);
+          subscriptionHistory.appendChild(li);
+        }
+      }
+    }
+
+    async function startCheckout(planId, provider, trigger) {
+      if (!planId || !provider) return;
+      if (!state.token) {
+        setStatus(translate('subscription.loginRequired'), 'error');
+        return;
+      }
+      const pendingPlanId = state.entitlements?.pending?.plan?.id;
+      if (pendingPlanId && Number(pendingPlanId) === Number(planId)) {
+        const pendingName = state.entitlements?.pending?.plan?.name || '';
+        if (pendingName) {
+          setStatus(translate('subscription.pendingNotice', { name: pendingName }), 'info');
+        } else {
+          setStatus(translate('subscription.renewing'), 'info');
+        }
+        return;
+      }
+      if (trigger) {
+        if (trigger.dataset.loading === 'true') return;
+        trigger.dataset.loading = 'true';
+        trigger.disabled = true;
+      }
+      try {
+        setStatus(translate('status.checkoutStarted'), 'info');
+        const response = await api('/api/billing/checkout', {
+          method: 'POST',
+          body: { planId: Number(planId), provider }
+        });
+        updateEntitlementsFromResponse(response);
+        const url = response?.checkout?.url;
+        if (url) {
+          window.location.href = url;
+          return;
+        }
+        setStatus(translate('status.checkoutError'), 'error');
+      } catch (err) {
+        console.error('checkout error', err);
+        setStatus(err.message || translate('status.checkoutError'), 'error');
+      } finally {
+        if (trigger) {
+          trigger.disabled = false;
+          delete trigger.dataset.loading;
         }
       }
     }
@@ -1544,6 +2382,7 @@
       try {
         await fetchCurrentUser();
         showDashboard();
+        await loadPlans();
         await loadRules();
         await loadOrders();
         await refreshApiKeysStatus();
@@ -1559,20 +2398,30 @@
       const data = await api('/api/auth/me');
       state.user = data.user;
       state.hasKeys = Boolean(data.hasApiKeys);
+      updateEntitlementsFromResponse(data);
       const greeting = state.user?.name ? `${translate('dashboard.welcome')} ${state.user.name}` : translate('dashboard.welcome');
       welcomeName.textContent = greeting;
       updateApiKeysStatus();
     }
 
     async function loadRules() {
-      const data = await api('/api/rules');
-      state.rules = extractRules(data);
-      renderTables();
+      try {
+        const data = await api('/api/rules');
+        state.rules = extractRules(data);
+        updateEntitlementsFromResponse(data);
+        renderTables();
+      } catch (err) {
+        console.error('load rules error', err);
+        state.rules = Array.isArray(state.rules) ? state.rules : [];
+        renderTables();
+        throw err;
+      }
     }
 
     async function persistAll(rules, message) {
       const response = await api('/api/rules', { method: 'POST', body: rules });
       state.rules = extractRules(response);
+      updateEntitlementsFromResponse(response);
       renderTables();
       if (message) setStatus(message.text, message.type || 'success');
     }
@@ -1642,6 +2491,17 @@
 
     async function addManualRule(event) {
       event.preventDefault();
+      const ent = state.entitlements || {};
+      if (!ent || !ent.plan || ent.manualEnabled === false) {
+        setStatus(translate('status.manualLocked'), 'error');
+        return;
+      }
+      const manualLimit = Number(ent?.manualLimit);
+      const activeManual = state.rules.filter(r => (r.type || '').toLowerCase() === 'manual' && r.enabled).length;
+      if (Number.isFinite(manualLimit) && manualLimit > 0 && activeManual >= manualLimit) {
+        setStatus(translate('status.manualLimit', { count: manualLimit }), 'error');
+        return;
+      }
       const rule = {
         id: generateId(),
         type: 'manual',
@@ -1665,6 +2525,7 @@
       try {
         const response = await api('/api/rules/sync', { method: 'POST' });
         state.rules = extractRules(response);
+        updateEntitlementsFromResponse(response);
         renderTables();
         setStatus(translate('status.manualSynced'), 'info');
       } catch (err) {
@@ -1673,11 +2534,57 @@
     }
 
     async function toggleRule(id, enabled) {
+      const rule = state.rules.find(r => r.id === id);
+      if (!rule) return;
+      if (enabled) {
+        const ent = state.entitlements || {};
+        const type = (rule.type || '').toLowerCase();
+        if (!ent || !ent.plan) {
+          const messageKey = type === 'manual' ? 'status.manualLocked' : 'status.aiLocked';
+          setStatus(translate(messageKey), 'error');
+          renderTables();
+          return;
+        }
+        if (type === 'manual') {
+          if (ent.manualEnabled === false) {
+            setStatus(translate('status.manualLocked'), 'error');
+            renderTables();
+            return;
+          }
+          const manualLimit = Number(ent?.manualLimit);
+          if (Number.isFinite(manualLimit) && manualLimit > 0) {
+            const activeManual = state.rules.filter(r => (r.type || '').toLowerCase() === 'manual' && r.enabled).length;
+            const nextActive = rule.enabled ? activeManual : activeManual + 1;
+            if (nextActive > manualLimit) {
+              setStatus(translate('status.manualLimit', { count: manualLimit }), 'error');
+              renderTables();
+              return;
+            }
+          }
+        } else if (type === 'ai') {
+          if (ent.aiEnabled === false) {
+            setStatus(translate('status.aiLocked'), 'error');
+            renderTables();
+            return;
+          }
+          const aiLimit = Number(ent?.aiLimit);
+          if (Number.isFinite(aiLimit) && aiLimit > 0) {
+            const activeAi = state.rules.filter(r => (r.type || '').toLowerCase() === 'ai' && r.enabled).length;
+            const nextActive = rule.enabled ? activeAi : activeAi + 1;
+            if (nextActive > aiLimit) {
+              setStatus(translate('status.aiLimit', { count: aiLimit }), 'error');
+              renderTables();
+              return;
+            }
+          }
+        }
+      }
       const next = state.rules.map(r => r.id === id ? { ...r, enabled } : r);
       try {
         await persistAll(next, { text: translate(enabled ? 'status.ruleActivated' : 'status.rulePaused'), type: 'info' });
       } catch (err) {
         setStatus(err.message, 'error');
+        renderTables();
       }
     }
 
@@ -1687,6 +2594,7 @@
       try {
         const data = await api(`/api/rules/${id}`, { method: 'DELETE' });
         state.rules = extractRules(data);
+        updateEntitlementsFromResponse(data);
         renderTables();
         setStatus(translate('status.ruleDeleted'), 'info');
       } catch (err) {
@@ -1702,6 +2610,17 @@
         setStatus(translate('status.aiBudgetInvalid'), 'error');
         return;
       }
+      const ent = state.entitlements || {};
+      if (!ent || !ent.plan || ent.aiEnabled === false) {
+        setStatus(translate('status.aiLocked'), 'error');
+        return;
+      }
+      const aiLimit = Number(ent?.aiLimit);
+      const activeAi = state.rules.filter(r => (r.type || '').toLowerCase() === 'ai' && r.enabled).length;
+      if (Number.isFinite(aiLimit) && aiLimit > 0 && activeAi >= aiLimit) {
+        setStatus(translate('status.aiLimit', { count: aiLimit }), 'error');
+        return;
+      }
       aiGenerateBtn.dataset.loading = 'true';
       aiGenerateBtn.disabled = true;
       try {
@@ -1709,6 +2628,7 @@
           method: 'POST',
           body: { budgetUSDT: budget, locale: state.language }
         });
+        updateEntitlementsFromResponse(data);
         await loadRules();
         if (data && data.rule && data.rule.aiModel) {
           const modelInput = document.getElementById('aiModel');
@@ -1732,6 +2652,7 @@
       state.hasKeys = false;
       state.lastRuleErrorsDigest = '';
       if (state.ordersTimer) clearInterval(state.ordersTimer);
+      updateEntitlements(null);
       renderTables();
       renderOrders([]);
       showLanding();
@@ -1757,9 +2678,15 @@
     });
 
     document.body.addEventListener('click', event => {
-      const btn = event.target.closest('[data-action="delete"]');
-      if (btn) {
-        deleteRule(btn.dataset.id);
+      const checkoutBtn = event.target.closest('[data-action="checkout"]');
+      if (checkoutBtn) {
+        event.preventDefault();
+        startCheckout(checkoutBtn.dataset.planId, checkoutBtn.dataset.provider, checkoutBtn);
+        return;
+      }
+      const deleteBtn = event.target.closest('[data-action="delete"]');
+      if (deleteBtn) {
+        deleteRule(deleteBtn.dataset.id);
       }
     });
 
@@ -1789,6 +2716,7 @@
       applyTranslations();
       renderTables();
       renderOrders([]);
+      await loadPlans();
       if (state.token) {
         try {
           await bootstrapDashboard();

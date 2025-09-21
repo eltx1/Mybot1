@@ -14,6 +14,7 @@ import mysql from "mysql2/promise";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import fetch from "node-fetch";
+import Stripe from "stripe";
 import {
   randomUUID,
   createCipheriv,
@@ -25,7 +26,13 @@ import { runEngine } from "./strategy.js";
 import { createBinanceClient } from "./binance.js";
 
 const app = express();
-app.use(express.json());
+app.use(express.json({
+  verify: (req, res, buf) => {
+    if (buf && buf.length) {
+      req.rawBody = Buffer.from(buf);
+    }
+  }
+}));
 
 const allowList = (process.env.ALLOWED_ORIGINS || "").split(",").map(s => s.trim()).filter(Boolean);
 app.use((req, res, next) => {
@@ -52,6 +59,69 @@ const dbConfig = {
 };
 
 const pool = mysql.createPool(dbConfig);
+
+const stripeClient = (() => {
+  const key = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_KEY || "";
+  if (!key) return null;
+  try {
+    return new Stripe(key, { apiVersion: "2024-06-20" });
+  } catch (err) {
+    console.error("Failed to initialise Stripe client", err.message);
+    return null;
+  }
+})();
+
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_SIGNING_SECRET || "";
+
+const CRYPTOMUS_MERCHANT_ID = process.env.CRYPTOMUS_MERCHANT_ID || process.env.CRYPTOMUS_MERCHANT || "";
+const CRYPTOMUS_PAYMENT_KEY = process.env.CRYPTOMUS_PAYMENT_KEY || process.env.CRYPTOMUS_API_KEY || "";
+const CRYPTOMUS_SUCCESS_URL = process.env.CRYPTOMUS_SUCCESS_URL || "";
+const CRYPTOMUS_CANCEL_URL = process.env.CRYPTOMUS_CANCEL_URL || "";
+
+const APP_BASE_URL = process.env.APP_BASE_URL || process.env.FRONTEND_URL || process.env.PUBLIC_URL || "http://localhost:8080";
+
+const PAYMENT_PROVIDERS = {
+  stripe: Boolean(stripeClient),
+  cryptomus: Boolean(CRYPTOMUS_MERCHANT_ID && CRYPTOMUS_PAYMENT_KEY)
+};
+
+const SUBSCRIPTION_STATUS = {
+  PENDING: "pending",
+  ACTIVE: "active",
+  CANCELLED: "cancelled",
+  EXPIRED: "expired",
+  FAILED: "failed"
+};
+
+const SUBSCRIPTION_PROVIDERS = {
+  STRIPE: "stripe",
+  CRYPTOMUS: "cryptomus"
+};
+
+const DEFAULT_PLANS = [
+  {
+    code: "manual-starter",
+    name: "Manual Starter",
+    description: "Manual automation essentials",
+    manualEnabled: true,
+    aiEnabled: false,
+    manualLimit: 10,
+    aiLimit: 0,
+    durationDays: 30,
+    priceUSD: 30
+  },
+  {
+    code: "pro-ai",
+    name: "AI Pro",
+    description: "Full manual & AI automation",
+    manualEnabled: true,
+    aiEnabled: true,
+    manualLimit: 50,
+    aiLimit: 20,
+    durationDays: 30,
+    priceUSD: 50
+  }
+];
 
 const JWT_SECRET = process.env.JWT_SECRET || process.env.SECRET_KEY || "change-this-secret";
 const CREDENTIALS_SECRET = process.env.CREDENTIALS_SECRET || JWT_SECRET;
@@ -96,6 +166,131 @@ function decryptSecret(payload) {
     console.error("Failed to decrypt Binance credential", err.message);
     return null;
   }
+}
+
+function buildAbsoluteUrl(pathname, fallback) {
+  try {
+    if (!pathname) return fallback || APP_BASE_URL;
+    const url = new URL(pathname, APP_BASE_URL);
+    return url.toString();
+  } catch {
+    return fallback || APP_BASE_URL;
+  }
+}
+
+function addDaysToDate(base, days) {
+  const date = base ? new Date(base) : new Date();
+  if (Number.isFinite(Number(days))) {
+    date.setTime(date.getTime() + Number(days) * 86400000);
+  }
+  return date;
+}
+
+function safeJSONStringify(value) {
+  if (value === undefined) return null;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
+
+function safeJSONParse(value) {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function generateCryptomusSignature(payload) {
+  if (!payload || typeof payload !== "object") {
+    return createHash("md5").update("" + CRYPTOMUS_PAYMENT_KEY).digest("hex");
+  }
+  const base64 = Buffer.from(JSON.stringify(payload)).toString("base64");
+  return createHash("md5").update(base64 + String(CRYPTOMUS_PAYMENT_KEY || "")).digest("hex");
+}
+
+function verifyCryptomusSignature(payload, signature) {
+  if (!signature) return false;
+  const expected = generateCryptomusSignature(payload);
+  return typeof signature === "string" && signature.toLowerCase() === expected.toLowerCase();
+}
+
+function createSubscriptionReference(userId, planId, provider) {
+  const base = randomUUID().replace(/-/g, "").slice(0, 12);
+  const prefix = String(provider || "checkout").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12) || "checkout";
+  const reference = `${prefix}_${userId}_${planId}_${base}`;
+  return reference.slice(0, 120);
+}
+
+function mapPlanRow(row) {
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    description: row.description || "",
+    manualEnabled: row.manual_enabled === 1 || row.manual_enabled === true,
+    aiEnabled: row.ai_enabled === 1 || row.ai_enabled === true,
+    manualLimit: Number(row.manual_limit) || 0,
+    aiLimit: Number(row.ai_limit) || 0,
+    durationDays: Number(row.duration_days) || 0,
+    priceUSD: row.price_usd !== null && row.price_usd !== undefined ? Number(row.price_usd) : 0,
+    isActive: row.is_active === 1 || row.is_active === true
+  };
+}
+
+async function seedDefaultPlans(conn) {
+  for (const plan of DEFAULT_PLANS) {
+    const [rows] = await conn.query("SELECT id FROM plans WHERE code = ? LIMIT 1", [plan.code]);
+    if (rows.length) continue;
+    await conn.query(
+      `INSERT INTO plans (code, name, description, manual_enabled, ai_enabled, manual_limit, ai_limit, duration_days, price_usd, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      [
+        plan.code,
+        plan.name,
+        plan.description,
+        plan.manualEnabled ? 1 : 0,
+        plan.aiEnabled ? 1 : 0,
+        Number(plan.manualLimit) || 0,
+        Number(plan.aiLimit) || 0,
+        Number(plan.durationDays) || 0,
+        Number(plan.priceUSD) || 0
+      ]
+    );
+  }
+}
+
+async function listActivePlans() {
+  const [rows] = await pool.query(
+    `SELECT id, code, name, description, manual_enabled, ai_enabled, manual_limit, ai_limit, duration_days, price_usd, is_active
+     FROM plans WHERE is_active = 1 ORDER BY price_usd ASC, id ASC`
+  );
+  return rows.map(mapPlanRow);
+}
+
+async function getPlanById(planId) {
+  if (!planId) return null;
+  const [rows] = await pool.query(
+    `SELECT id, code, name, description, manual_enabled, ai_enabled, manual_limit, ai_limit, duration_days, price_usd, is_active
+     FROM plans WHERE id = ? LIMIT 1`,
+    [planId]
+  );
+  if (!rows.length) return null;
+  return mapPlanRow(rows[0]);
+}
+
+async function getPlanByCode(code) {
+  if (!code) return null;
+  const [rows] = await pool.query(
+    `SELECT id, code, name, description, manual_enabled, ai_enabled, manual_limit, ai_limit, duration_days, price_usd, is_active
+     FROM plans WHERE code = ? LIMIT 1`,
+    [code]
+  );
+  if (!rows.length) return null;
+  return mapPlanRow(rows[0]);
 }
 
 async function initDb() {
@@ -153,6 +348,51 @@ async function initDb() {
         INDEX idx_rule_errors_user (user_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS plans (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        code VARCHAR(64) NOT NULL UNIQUE,
+        name VARCHAR(120) NOT NULL,
+        description VARCHAR(255) DEFAULT NULL,
+        manual_enabled TINYINT(1) NOT NULL DEFAULT 0,
+        ai_enabled TINYINT(1) NOT NULL DEFAULT 0,
+        manual_limit INT NOT NULL DEFAULT 0,
+        ai_limit INT NOT NULL DEFAULT 0,
+        duration_days INT NOT NULL DEFAULT 30,
+        price_usd DECIMAL(10,2) NOT NULL DEFAULT 0,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS user_subscriptions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        plan_id INT NOT NULL,
+        provider VARCHAR(32) NOT NULL,
+        status VARCHAR(32) NOT NULL,
+        reference VARCHAR(128) NOT NULL,
+        provider_session_id VARCHAR(191) DEFAULT NULL,
+        provider_invoice_id VARCHAR(191) DEFAULT NULL,
+        amount_usd DECIMAL(10,2) NOT NULL DEFAULT 0,
+        currency VARCHAR(16) NOT NULL DEFAULT 'USD',
+        started_at DATETIME DEFAULT NULL,
+        expires_at DATETIME DEFAULT NULL,
+        metadata TEXT DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        CONSTRAINT fk_sub_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_sub_plan FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE RESTRICT,
+        UNIQUE KEY uniq_reference (reference),
+        INDEX idx_user_status (user_id, status),
+        INDEX idx_provider (provider, provider_session_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await seedDefaultPlans(conn);
   } finally {
     conn.release();
   }
@@ -197,6 +437,359 @@ async function upsertUserApiKeys(userId, apiKey, apiSecret) {
 
 async function deleteUserApiKeys(userId) {
   await pool.query("DELETE FROM user_api_keys WHERE user_id = ?", [userId]);
+}
+
+function mapSubscriptionRow(row) {
+  const plan = mapPlanRow({
+    id: row.plan_id_internal !== undefined ? row.plan_id_internal : row.plan_id,
+    code: row.plan_code ?? row.code,
+    name: row.plan_name ?? row.name,
+    description: row.plan_description ?? row.description,
+    manual_enabled: row.plan_manual_enabled ?? row.manual_enabled ?? 0,
+    ai_enabled: row.plan_ai_enabled ?? row.ai_enabled ?? 0,
+    manual_limit: row.plan_manual_limit ?? row.manual_limit ?? 0,
+    ai_limit: row.plan_ai_limit ?? row.ai_limit ?? 0,
+    duration_days: row.plan_duration_days ?? row.duration_days ?? 0,
+    price_usd: row.plan_price_usd ?? row.price_usd ?? 0,
+    is_active: row.plan_is_active ?? row.is_active ?? 1
+  });
+  return {
+    id: row.id,
+    userId: row.user_id,
+    planId: row.plan_id,
+    provider: row.provider,
+    status: row.status,
+    reference: row.reference,
+    providerSessionId: row.provider_session_id || null,
+    providerInvoiceId: row.provider_invoice_id || null,
+    amountUSD: row.amount_usd !== null && row.amount_usd !== undefined ? Number(row.amount_usd) : 0,
+    currency: row.currency || "USD",
+    startedAt: row.started_at ? new Date(row.started_at).toISOString() : null,
+    expiresAt: row.expires_at ? new Date(row.expires_at).toISOString() : null,
+    metadata: safeJSONParse(row.metadata),
+    createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
+    updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : null,
+    plan
+  };
+}
+
+function computeRemainingDays(expiresAt) {
+  if (!expiresAt) return null;
+  const expiresTs = new Date(expiresAt).getTime();
+  if (!Number.isFinite(expiresTs)) return null;
+  const diff = expiresTs - Date.now();
+  if (diff <= 0) return 0;
+  return Math.ceil(diff / 86400000);
+}
+
+async function expireStaleSubscriptions(userId) {
+  if (!userId) return;
+  await pool.query(
+    `UPDATE user_subscriptions
+     SET status = ?
+     WHERE user_id = ? AND status = ? AND expires_at IS NOT NULL AND expires_at <= NOW()`
+    ,
+    [SUBSCRIPTION_STATUS.EXPIRED, userId, SUBSCRIPTION_STATUS.ACTIVE]
+  );
+}
+
+async function findSubscriptionByReference(reference) {
+  if (!reference) return null;
+  const [rows] = await pool.query(
+    `SELECT s.*, p.id AS plan_id_internal, p.code AS plan_code, p.name AS plan_name, p.description AS plan_description,
+            p.manual_enabled AS plan_manual_enabled, p.ai_enabled AS plan_ai_enabled,
+            p.manual_limit AS plan_manual_limit, p.ai_limit AS plan_ai_limit,
+            p.duration_days AS plan_duration_days, p.price_usd AS plan_price_usd,
+            p.is_active AS plan_is_active
+     FROM user_subscriptions s
+     INNER JOIN plans p ON p.id = s.plan_id
+     WHERE s.reference = ?
+     LIMIT 1`,
+    [reference]
+  );
+  if (!rows.length) return null;
+  return mapSubscriptionRow(rows[0]);
+}
+
+async function findSubscriptionByProviderSession(provider, sessionId) {
+  if (!provider || !sessionId) return null;
+  const [rows] = await pool.query(
+    `SELECT s.*, p.id AS plan_id_internal, p.code AS plan_code, p.name AS plan_name, p.description AS plan_description,
+            p.manual_enabled AS plan_manual_enabled, p.ai_enabled AS plan_ai_enabled,
+            p.manual_limit AS plan_manual_limit, p.ai_limit AS plan_ai_limit,
+            p.duration_days AS plan_duration_days, p.price_usd AS plan_price_usd,
+            p.is_active AS plan_is_active
+     FROM user_subscriptions s
+     INNER JOIN plans p ON p.id = s.plan_id
+     WHERE s.provider = ? AND s.provider_session_id = ?
+     LIMIT 1`,
+    [provider, sessionId]
+  );
+  if (!rows.length) return null;
+  return mapSubscriptionRow(rows[0]);
+}
+
+async function findLatestSubscription(userId) {
+  if (!userId) return null;
+  const [rows] = await pool.query(
+    `SELECT s.*, p.id AS plan_id_internal, p.code AS plan_code, p.name AS plan_name, p.description AS plan_description,
+            p.manual_enabled AS plan_manual_enabled, p.ai_enabled AS plan_ai_enabled,
+            p.manual_limit AS plan_manual_limit, p.ai_limit AS plan_ai_limit,
+            p.duration_days AS plan_duration_days, p.price_usd AS plan_price_usd,
+            p.is_active AS plan_is_active
+     FROM user_subscriptions s
+     INNER JOIN plans p ON p.id = s.plan_id
+     WHERE s.user_id = ?
+     ORDER BY s.created_at DESC
+     LIMIT 1`,
+    [userId]
+  );
+  if (!rows.length) return null;
+  return mapSubscriptionRow(rows[0]);
+}
+
+async function listRecentSubscriptions(userId, limit = 8) {
+  if (!userId) return [];
+  const size = Math.max(1, Math.min(Number(limit) || 8, 20));
+  const [rows] = await pool.query(
+    `SELECT s.*, p.id AS plan_id_internal, p.code AS plan_code, p.name AS plan_name, p.description AS plan_description,
+            p.manual_enabled AS plan_manual_enabled, p.ai_enabled AS plan_ai_enabled,
+            p.manual_limit AS plan_manual_limit, p.ai_limit AS plan_ai_limit,
+            p.duration_days AS plan_duration_days, p.price_usd AS plan_price_usd,
+            p.is_active AS plan_is_active
+     FROM user_subscriptions s
+     INNER JOIN plans p ON p.id = s.plan_id
+     WHERE s.user_id = ?
+     ORDER BY s.created_at DESC
+     LIMIT ?`,
+    [userId, size]
+  );
+  return rows.map(mapSubscriptionRow);
+}
+
+async function getActiveSubscription(userId) {
+  if (!userId) return null;
+  await expireStaleSubscriptions(userId);
+  const [rows] = await pool.query(
+    `SELECT s.*, p.id AS plan_id_internal, p.code AS plan_code, p.name AS plan_name, p.description AS plan_description,
+            p.manual_enabled AS plan_manual_enabled, p.ai_enabled AS plan_ai_enabled,
+            p.manual_limit AS plan_manual_limit, p.ai_limit AS plan_ai_limit,
+            p.duration_days AS plan_duration_days, p.price_usd AS plan_price_usd,
+            p.is_active AS plan_is_active
+     FROM user_subscriptions s
+     INNER JOIN plans p ON p.id = s.plan_id
+     WHERE s.user_id = ? AND s.status = ?
+     ORDER BY s.expires_at DESC, s.id DESC
+     LIMIT 1`,
+    [userId, SUBSCRIPTION_STATUS.ACTIVE]
+  );
+  if (!rows.length) return null;
+  return mapSubscriptionRow(rows[0]);
+}
+
+async function getPendingSubscription(userId) {
+  if (!userId) return null;
+  const [rows] = await pool.query(
+    `SELECT s.*, p.id AS plan_id_internal, p.code AS plan_code, p.name AS plan_name, p.description AS plan_description,
+            p.manual_enabled AS plan_manual_enabled, p.ai_enabled AS plan_ai_enabled,
+            p.manual_limit AS plan_manual_limit, p.ai_limit AS plan_ai_limit,
+            p.duration_days AS plan_duration_days, p.price_usd AS plan_price_usd,
+            p.is_active AS plan_is_active
+     FROM user_subscriptions s
+     INNER JOIN plans p ON p.id = s.plan_id
+     WHERE s.user_id = ? AND s.status = ?
+     ORDER BY s.created_at DESC
+     LIMIT 1`,
+    [userId, SUBSCRIPTION_STATUS.PENDING]
+  );
+  if (!rows.length) return null;
+  return mapSubscriptionRow(rows[0]);
+}
+
+async function getSubscriptionSnapshot(userId, options = {}) {
+  if (!userId) return { active: null, pending: null, history: [] };
+  const includeHistory = options.includeHistory === true;
+  await expireStaleSubscriptions(userId);
+  const tasks = [
+    getActiveSubscription(userId),
+    getPendingSubscription(userId)
+  ];
+  if (includeHistory) {
+    tasks.push(listRecentSubscriptions(userId, 6));
+  } else {
+    tasks.push(Promise.resolve([]));
+  }
+  const [active, pending, history] = await Promise.all(tasks);
+  return { active, pending, history };
+}
+
+async function getSubscriptionEntitlements(userId, options = {}) {
+  const includeHistory = options.includeHistory === true;
+  const snapshot = await getSubscriptionSnapshot(userId, { includeHistory });
+  const active = snapshot.active;
+  if (!active) {
+    return {
+      status: SUBSCRIPTION_STATUS.EXPIRED,
+      manualEnabled: false,
+      aiEnabled: false,
+      manualLimit: 0,
+      aiLimit: 0,
+      plan: null,
+      startedAt: null,
+      expiresAt: null,
+      remainingDays: null,
+      provider: null,
+      history: includeHistory ? snapshot.history : [],
+      pending: snapshot.pending
+    };
+  }
+  return {
+    status: active.status,
+    manualEnabled: Boolean(active.plan.manualEnabled),
+    aiEnabled: Boolean(active.plan.aiEnabled),
+    manualLimit: Number(active.plan.manualLimit) || 0,
+    aiLimit: Number(active.plan.aiLimit) || 0,
+    plan: {
+      id: active.plan.id,
+      code: active.plan.code,
+      name: active.plan.name,
+      description: active.plan.description,
+      priceUSD: active.plan.priceUSD,
+      durationDays: active.plan.durationDays
+    },
+    startedAt: active.startedAt,
+    expiresAt: active.expiresAt,
+    remainingDays: computeRemainingDays(active.expiresAt),
+    provider: active.provider,
+    history: includeHistory ? snapshot.history : [],
+    pending: snapshot.pending
+  };
+}
+
+async function createPendingSubscription({
+  userId,
+  planId,
+  provider,
+  reference,
+  amountUSD,
+  currency = "USD",
+  metadata,
+  providerSessionId,
+  providerInvoiceId
+}) {
+  if (!userId || !planId || !provider || !reference) return null;
+  const payload = [
+    userId,
+    planId,
+    provider,
+    SUBSCRIPTION_STATUS.PENDING,
+    reference,
+    providerSessionId || null,
+    providerInvoiceId || null,
+    Number(amountUSD) || 0,
+    currency || "USD",
+    safeJSONStringify(metadata)
+  ];
+  await pool.query(
+    `INSERT INTO user_subscriptions (user_id, plan_id, provider, status, reference, provider_session_id, provider_invoice_id, amount_usd, currency, metadata)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       plan_id = VALUES(plan_id),
+       provider = VALUES(provider),
+       status = VALUES(status),
+       provider_session_id = VALUES(provider_session_id),
+       provider_invoice_id = VALUES(provider_invoice_id),
+       amount_usd = VALUES(amount_usd),
+       currency = VALUES(currency),
+       metadata = VALUES(metadata)`,
+    payload
+  );
+  return findSubscriptionByReference(reference);
+}
+
+async function markSubscriptionStatus(reference, status, updates = {}) {
+  if (!reference || !status) return null;
+  const sets = ["status = ?"];
+  const values = [status];
+  if (Object.prototype.hasOwnProperty.call(updates, "providerInvoiceId")) {
+    sets.push("provider_invoice_id = ?");
+    values.push(updates.providerInvoiceId || null);
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "providerSessionId")) {
+    sets.push("provider_session_id = ?");
+    values.push(updates.providerSessionId || null);
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "amountUSD")) {
+    sets.push("amount_usd = ?");
+    values.push(Number(updates.amountUSD) || 0);
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "currency")) {
+    sets.push("currency = ?");
+    values.push(updates.currency || "USD");
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "startedAt")) {
+    sets.push("started_at = ?");
+    values.push(updates.startedAt ? new Date(updates.startedAt) : null);
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "expiresAt")) {
+    sets.push("expires_at = ?");
+    values.push(updates.expiresAt ? new Date(updates.expiresAt) : null);
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "metadata")) {
+    sets.push("metadata = ?");
+    values.push(safeJSONStringify(updates.metadata));
+  }
+  sets.push("updated_at = CURRENT_TIMESTAMP");
+  values.push(reference);
+  await pool.query(
+    `UPDATE user_subscriptions SET ${sets.join(", ")} WHERE reference = ? LIMIT 1`,
+    values
+  );
+  return findSubscriptionByReference(reference);
+}
+
+async function activateSubscription(reference, overrides = {}) {
+  if (!reference) return null;
+  const current = await findSubscriptionByReference(reference);
+  if (!current) return null;
+  const plan = current.plan || (await getPlanById(current.planId));
+  if (!plan) {
+    await markSubscriptionStatus(reference, SUBSCRIPTION_STATUS.FAILED, overrides);
+    return null;
+  }
+  const start = overrides.startedAt ? new Date(overrides.startedAt) : new Date();
+  const expires = overrides.expiresAt ? new Date(overrides.expiresAt) : addDaysToDate(start, plan.durationDays || 0);
+  const amountUSD = Object.prototype.hasOwnProperty.call(overrides, "amountUSD")
+    ? Number(overrides.amountUSD) || 0
+    : (current.amountUSD || Number(plan.priceUSD) || 0);
+  const currency = overrides.currency || current.currency || "USD";
+  const metadata = Object.prototype.hasOwnProperty.call(overrides, "metadata") ? overrides.metadata : current.metadata;
+
+  await pool.query(
+    `UPDATE user_subscriptions
+     SET status = ?, provider_invoice_id = COALESCE(?, provider_invoice_id),
+         started_at = ?, expires_at = ?, amount_usd = ?, currency = ?, metadata = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ? LIMIT 1`,
+    [
+      SUBSCRIPTION_STATUS.ACTIVE,
+      overrides.providerInvoiceId || current.providerInvoiceId || null,
+      start,
+      expires,
+      amountUSD,
+      currency,
+      safeJSONStringify(metadata),
+      current.id
+    ]
+  );
+
+  await pool.query(
+    `UPDATE user_subscriptions
+     SET status = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE user_id = ? AND status = ? AND id <> ?`,
+    [SUBSCRIPTION_STATUS.EXPIRED, current.userId, SUBSCRIPTION_STATUS.ACTIVE, current.id]
+  );
+
+  return findSubscriptionByReference(reference);
 }
 
 function normalizeRules(input) {
@@ -316,7 +909,104 @@ function mapRuleRow(row) {
   };
 }
 
-async function readRules(userId) {
+function applyEntitlementsToRules(rules, entitlements) {
+  if (!Array.isArray(rules) || !rules.length) return [];
+  const manualEnabled = Boolean(entitlements && entitlements.manualEnabled);
+  const aiEnabled = Boolean(entitlements && entitlements.aiEnabled);
+  const manualLimit = Number(entitlements && entitlements.manualLimit);
+  const aiLimit = Number(entitlements && entitlements.aiLimit);
+  const result = rules.map(rule => ({ ...rule }));
+
+  const manualIndexes = [];
+  const aiIndexes = [];
+  result.forEach((rule, index) => {
+    const type = (rule.type || "").toLowerCase();
+    if (type === "manual") manualIndexes.push(index);
+    else if (type === "ai") aiIndexes.push(index);
+  });
+
+  manualIndexes.sort((a, b) => {
+    const aRule = result[a];
+    const bRule = result[b];
+    return (Number(aRule.createdAt) || 0) - (Number(bRule.createdAt) || 0);
+  });
+
+  aiIndexes.sort((a, b) => {
+    const aRule = result[a];
+    const bRule = result[b];
+    return (Number(aRule.createdAt) || 0) - (Number(bRule.createdAt) || 0);
+  });
+
+  let manualActive = 0;
+  for (const idx of manualIndexes) {
+    const rule = result[idx];
+    if (!manualEnabled) {
+      rule.enabled = false;
+      continue;
+    }
+    if (!rule.enabled) continue;
+    if (Number.isFinite(manualLimit) && manualLimit >= 0 && manualLimit !== Infinity) {
+      if (manualLimit <= 0 || manualActive >= manualLimit) {
+        rule.enabled = false;
+        continue;
+      }
+    }
+    manualActive += 1;
+  }
+
+  let aiActive = 0;
+  for (const idx of aiIndexes) {
+    const rule = result[idx];
+    if (!aiEnabled) {
+      rule.enabled = false;
+      continue;
+    }
+    if (!rule.enabled) continue;
+    if (Number.isFinite(aiLimit) && aiLimit >= 0 && aiLimit !== Infinity) {
+      if (aiLimit <= 0 || aiActive >= aiLimit) {
+        rule.enabled = false;
+        continue;
+      }
+    }
+    aiActive += 1;
+  }
+
+  return result;
+}
+
+function countActiveRules(rules, type) {
+  const target = (type || "").toLowerCase();
+  return rules.filter(rule => (rule.type || "").toLowerCase() === target && rule.enabled).length;
+}
+
+function validateRulesAgainstEntitlements(rules, entitlements) {
+  const manualEnabled = Boolean(entitlements && entitlements.manualEnabled);
+  const aiEnabled = Boolean(entitlements && entitlements.aiEnabled);
+  const manualLimit = Number(entitlements && entitlements.manualLimit);
+  const aiLimit = Number(entitlements && entitlements.aiLimit);
+
+  const manualActive = countActiveRules(rules, "manual");
+  const aiActive = countActiveRules(rules, "ai");
+
+  if (!manualEnabled && manualActive > 0) {
+    return { ok: false, message: "Manual rules are disabled for your current plan." };
+  }
+  if (!aiEnabled && aiActive > 0) {
+    return { ok: false, message: "AI rules are disabled for your current plan." };
+  }
+
+  if (manualEnabled && Number.isFinite(manualLimit) && manualLimit >= 0 && manualLimit !== Infinity && manualActive > manualLimit) {
+    return { ok: false, message: `Your plan allows up to ${manualLimit} active manual rules.` };
+  }
+
+  if (aiEnabled && Number.isFinite(aiLimit) && aiLimit >= 0 && aiLimit !== Infinity && aiActive > aiLimit) {
+    return { ok: false, message: `Your plan allows up to ${aiLimit} active AI rules.` };
+  }
+
+  return { ok: true };
+}
+
+async function readRules(userId, options = {}) {
   const [rows] = await pool.query(
     `SELECT r.*, e.message AS last_error, e.code AS last_error_code, e.created_at AS last_error_at
      FROM rules r
@@ -325,7 +1015,19 @@ async function readRules(userId) {
      ORDER BY r.created_at ASC`,
     [userId]
   );
-  return rows.map(mapRuleRow);
+  const list = rows.map(mapRuleRow);
+  if (!userId) {
+    if (options.withEntitlements) {
+      return { rules: list, entitlements: null };
+    }
+    return list;
+  }
+  const entitlements = await getSubscriptionEntitlements(userId, { includeHistory: options.includeHistory === true });
+  const enforced = applyEntitlementsToRules(list, entitlements);
+  if (options.withEntitlements) {
+    return { rules: enforced, entitlements };
+  }
+  return enforced;
 }
 
 async function writeRules(userId, rules) {
@@ -502,8 +1204,11 @@ app.post("/api/auth/login", handleAsync(async (req, res) => {
 }));
 
 app.get("/api/auth/me", authRequired(handleAsync(async (req, res) => {
-  const hasKeys = await hasApiKeys(req.user.id);
-  res.json({ user: req.user, hasApiKeys: hasKeys });
+  const [hasKeys, subscription] = await Promise.all([
+    hasApiKeys(req.user.id),
+    getSubscriptionEntitlements(req.user.id, { includeHistory: true })
+  ]);
+  res.json({ user: req.user, hasApiKeys: hasKeys, subscription });
 })));
 
 app.get("/api/users/api-keys", authRequired(handleAsync(async (req, res) => {
@@ -532,8 +1237,8 @@ app.delete("/api/users/api-keys", authRequired(handleAsync(async (req, res) => {
 })));
 
 app.get("/api/rules", authRequired(handleAsync(async (req, res) => {
-  const rules = await readRules(req.user.id);
-  res.json({ rules });
+  const { rules, entitlements } = await readRules(req.user.id, { withEntitlements: true });
+  res.json({ rules, entitlements });
 })));
 
 app.get("/api/rules/errors", authRequired(handleAsync(async (req, res) => {
@@ -553,17 +1258,171 @@ app.get("/api/rules/errors", authRequired(handleAsync(async (req, res) => {
 app.post("/api/rules", authRequired(handleAsync(async (req, res) => {
   const payload = Array.isArray(req.body) ? req.body : [req.body];
   const { rules: normalized } = normalizeRules(payload);
-  await writeRules(req.user.id, normalized);
-  const saved = await readRules(req.user.id);
-  res.json({ ok: true, count: saved.length, rules: saved });
+  const entitlements = await getSubscriptionEntitlements(req.user.id, { includeHistory: false });
+  const validation = validateRulesAgainstEntitlements(normalized, entitlements);
+  if (!validation.ok) {
+    return res.status(403).json({ error: validation.message });
+  }
+  const enforced = applyEntitlementsToRules(normalized, entitlements);
+  await writeRules(req.user.id, enforced);
+  const { rules: saved, entitlements: nextEntitlements } = await readRules(req.user.id, { withEntitlements: true });
+  res.json({ ok: true, count: saved.length, rules: saved, entitlements: nextEntitlements });
 })));
 
 app.delete("/api/rules/:id", authRequired(handleAsync(async (req, res) => {
   const id = req.params.id;
   if (!id) return res.status(400).json({ error: "id is required" });
   await removeRule(req.user.id, id);
-  const saved = await readRules(req.user.id);
-  res.json({ ok: true, count: saved.length, rules: saved });
+  const { rules: saved, entitlements } = await readRules(req.user.id, { withEntitlements: true });
+  res.json({ ok: true, count: saved.length, rules: saved, entitlements });
+})));
+
+app.post("/api/rules/sync", authRequired(handleAsync(async (req, res) => {
+  const { rules, entitlements } = await readRules(req.user.id, { withEntitlements: true });
+  res.json({ ok: true, count: rules.length, rules, entitlements });
+})));
+
+app.get("/api/billing/subscription", authRequired(handleAsync(async (req, res) => {
+  const subscription = await getSubscriptionEntitlements(req.user.id, { includeHistory: true });
+  res.json({ subscription });
+})));
+
+app.post("/api/billing/checkout", authRequired(handleAsync(async (req, res) => {
+  const { planId, provider } = req.body || {};
+  const plan = await getPlanById(Number(planId));
+  if (!plan || !plan.isActive) {
+    return res.status(404).json({ error: "Plan not found" });
+  }
+  if (!(plan.priceUSD > 0)) {
+    return res.status(400).json({ error: "Plan price must be greater than zero" });
+  }
+
+  const normalizedProvider = typeof provider === "string" ? provider.toLowerCase() : "";
+  if (normalizedProvider === SUBSCRIPTION_PROVIDERS.STRIPE && !PAYMENT_PROVIDERS.stripe) {
+    return res.status(400).json({ error: "Stripe payments are not configured" });
+  }
+  if (normalizedProvider === SUBSCRIPTION_PROVIDERS.CRYPTOMUS && !PAYMENT_PROVIDERS.cryptomus) {
+    return res.status(400).json({ error: "Cryptomus payments are not configured" });
+  }
+  if (!Object.values(SUBSCRIPTION_PROVIDERS).includes(normalizedProvider)) {
+    return res.status(400).json({ error: "Unsupported payment provider" });
+  }
+
+  const reference = createSubscriptionReference(req.user.id, plan.id, normalizedProvider);
+  const amountUSD = Number(plan.priceUSD) || 0;
+  const successUrl = buildAbsoluteUrl(`/billing/success?ref=${encodeURIComponent(reference)}`);
+  const cancelUrl = buildAbsoluteUrl(`/billing/cancel?ref=${encodeURIComponent(reference)}`);
+  let checkoutPayload = {};
+
+  if (normalizedProvider === SUBSCRIPTION_PROVIDERS.STRIPE) {
+    if (!stripeClient) {
+      return res.status(500).json({ error: "Stripe client not initialised" });
+    }
+    const session = await stripeClient.checkout.sessions.create({
+      mode: "payment",
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      client_reference_id: reference,
+      customer_email: req.user.email || undefined,
+      metadata: {
+        userId: String(req.user.id),
+        planId: String(plan.id),
+        planCode: plan.code,
+        reference
+      },
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: "usd",
+            unit_amount: Math.round(amountUSD * 100),
+            product_data: {
+              name: plan.name,
+              description: plan.description || undefined
+            }
+          }
+        }
+      ]
+    });
+    await createPendingSubscription({
+      userId: req.user.id,
+      planId: plan.id,
+      provider: SUBSCRIPTION_PROVIDERS.STRIPE,
+      reference,
+      amountUSD,
+      currency: "USD",
+      metadata: {
+        provider: SUBSCRIPTION_PROVIDERS.STRIPE,
+        sessionId: session.id
+      },
+      providerSessionId: session.id,
+      providerInvoiceId: session.payment_intent || null
+    });
+    checkoutPayload = {
+      sessionId: session.id,
+      url: session.url,
+      reference
+    };
+  } else {
+    const callbackUrl = buildAbsoluteUrl("/webhooks/cryptomus");
+    const invoicePayload = {
+      amount: amountUSD.toFixed(2),
+      currency: "USD",
+      order_id: reference,
+      lifetime: 3600,
+      url_success: CRYPTOMUS_SUCCESS_URL ? buildAbsoluteUrl(CRYPTOMUS_SUCCESS_URL) : successUrl,
+      url_error: CRYPTOMUS_CANCEL_URL ? buildAbsoluteUrl(CRYPTOMUS_CANCEL_URL) : cancelUrl,
+      callback_url: callbackUrl,
+      url_callback: callbackUrl,
+      description: plan.description || plan.name
+    };
+    if (req.user.email) invoicePayload.payer_email = req.user.email;
+    const signature = generateCryptomusSignature(invoicePayload);
+    const response = await fetch("https://api.cryptomus.com/v1/payment", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        merchant: CRYPTOMUS_MERCHANT_ID,
+        sign: signature
+      },
+      body: JSON.stringify(invoicePayload)
+    });
+    const invoiceData = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      console.error("Cryptomus checkout error", invoiceData);
+      const errorMessage = invoiceData?.message || invoiceData?.error || "Cryptomus API error";
+      return res.status(502).json({ error: errorMessage });
+    }
+    const paymentUrl = invoiceData?.result_url || invoiceData?.url || invoiceData?.payment_url;
+    if (!paymentUrl) {
+      return res.status(502).json({ error: "Cryptomus did not return a payment URL" });
+    }
+    const invoiceId = invoiceData?.uuid || invoiceData?.payment_uuid || invoiceData?.invoice_uuid || null;
+    await createPendingSubscription({
+      userId: req.user.id,
+      planId: plan.id,
+      provider: SUBSCRIPTION_PROVIDERS.CRYPTOMUS,
+      reference,
+      amountUSD,
+      currency: "USD",
+      metadata: {
+        provider: SUBSCRIPTION_PROVIDERS.CRYPTOMUS,
+        invoiceId,
+        response: invoiceData
+      },
+      providerSessionId: invoiceId,
+      providerInvoiceId: invoiceId
+    });
+    checkoutPayload = {
+      url: paymentUrl,
+      invoiceId,
+      address: invoiceData?.address,
+      reference
+    };
+  }
+
+  const subscription = await getSubscriptionEntitlements(req.user.id, { includeHistory: true });
+  res.json({ ok: true, provider: normalizedProvider, reference, checkout: checkoutPayload, subscription });
 })));
 
 app.get("/api/orders", authRequired(handleAsync(async (req, res) => {
@@ -713,6 +1572,17 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
     return res.status(400).json({ error: "budgetUSDT must be a positive number" });
   }
 
+  const { rules: currentRules, entitlements } = await readRules(req.user.id, { withEntitlements: true });
+  if (!entitlements.aiEnabled) {
+    return res.status(403).json({ error: "AI rules are disabled for your current plan." });
+  }
+  if (Number.isFinite(entitlements.aiLimit) && entitlements.aiLimit >= 0 && entitlements.aiLimit !== Infinity) {
+    const aiActive = countActiveRules(currentRules, "ai");
+    if (entitlements.aiLimit <= 0 || aiActive >= entitlements.aiLimit) {
+      return res.status(403).json({ error: `Your plan allows up to ${entitlements.aiLimit} active AI rules.` });
+    }
+  }
+
   let marketSnapshot = [];
   try {
     const response = await fetch("https://api.binance.com/api/v3/ticker/24hr");
@@ -832,7 +1702,6 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
     parsed.exitPrice = Number(exit.toFixed(6));
   }
 
-  const current = await readRules(req.user.id);
   const aiRule = {
     id: randomUUID(),
     type: "ai",
@@ -854,14 +1723,31 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
     aiModel: model
   };
 
-  const combined = [...current, aiRule];
+  const combined = [...currentRules, aiRule];
   const { rules: normalized } = normalizeRules(combined);
-  await writeRules(req.user.id, normalized);
-  const saved = await readRules(req.user.id);
+  const validation = validateRulesAgainstEntitlements(normalized, entitlements);
+  if (!validation.ok) {
+    return res.status(403).json({ error: validation.message });
+  }
+  const enforced = applyEntitlementsToRules(normalized, entitlements);
+  await writeRules(req.user.id, enforced);
+  const { rules: saved, entitlements: nextEntitlements } = await readRules(req.user.id, { withEntitlements: true });
   const created = saved.find(r => r.id === aiRule.id) || aiRule;
 
-  res.json({ ok: true, rule: created });
-})));
+  res.json({ ok: true, rule: created, entitlements: nextEntitlements });
+}))); 
+
+app.get("/api/plans", handleAsync(async (req, res) => {
+  const plans = await listActivePlans();
+  res.json({
+    plans,
+    currency: "USD",
+    providers: {
+      stripe: PAYMENT_PROVIDERS.stripe,
+      cryptomus: PAYMENT_PROVIDERS.cryptomus
+    }
+  });
+}));
 
 app.get("/healthz", handleAsync(async (req, res) => {
   try {
@@ -871,6 +1757,95 @@ app.get("/healthz", handleAsync(async (req, res) => {
     res.status(500).json({ ok: false });
   }
 }));
+
+app.post("/webhooks/stripe", async (req, res) => {
+  if (!stripeClient || !STRIPE_WEBHOOK_SECRET) {
+    return res.json({ ok: true });
+  }
+  const signature = req.headers["stripe-signature"];
+  if (!signature || !req.rawBody) {
+    return res.status(400).json({ error: "Missing Stripe signature" });
+  }
+  let event;
+  try {
+    event = stripeClient.webhooks.constructEvent(req.rawBody, signature, STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.error("Stripe webhook signature error", err.message);
+    return res.status(400).json({ error: "Invalid Stripe signature" });
+  }
+
+  try {
+    if (event.type === "checkout.session.completed") {
+      const session = event.data?.object || {};
+      const reference = session.client_reference_id || session.metadata?.reference;
+      if (reference) {
+        await activateSubscription(reference, {
+          providerInvoiceId: session.payment_intent || session.id,
+          amountUSD: session.amount_total ? Number(session.amount_total) / 100 : undefined,
+          currency: session.currency ? session.currency.toUpperCase() : "USD",
+          metadata: { eventId: event.id, type: event.type }
+        });
+      }
+    } else if (event.type === "checkout.session.expired" || event.type === "checkout.session.async_payment_failed") {
+      const session = event.data?.object || {};
+      const reference = session.client_reference_id || session.metadata?.reference;
+      if (reference) {
+        await markSubscriptionStatus(reference, SUBSCRIPTION_STATUS.FAILED, {
+          metadata: { eventId: event.id, type: event.type }
+        });
+      }
+    }
+  } catch (err) {
+    console.error("Stripe webhook handling error", err);
+    return res.status(500).json({ error: "Failed to process Stripe webhook" });
+  }
+
+  res.json({ received: true });
+});
+
+app.post("/webhooks/cryptomus", async (req, res) => {
+  if (!PAYMENT_PROVIDERS.cryptomus) {
+    return res.json({ ok: true });
+  }
+  const payload = req.body || {};
+  const signature = req.headers?.sign || req.headers?.["x-sign"];
+  const merchantHeader = req.headers?.merchant;
+  if (CRYPTOMUS_MERCHANT_ID && merchantHeader && merchantHeader !== CRYPTOMUS_MERCHANT_ID) {
+    return res.status(400).json({ error: "Invalid merchant" });
+  }
+  if (!verifyCryptomusSignature(payload, signature)) {
+    console.error("Cryptomus webhook signature mismatch", payload);
+    return res.status(400).json({ error: "Invalid signature" });
+  }
+
+  const reference = payload?.order_id || payload?.orderId || payload?.merchant_order_id;
+  if (!reference) {
+    return res.json({ ok: true });
+  }
+
+  const status = String(payload?.status || payload?.state || "").toLowerCase();
+  const successfulStates = new Set(["paid", "paid_over", "paid_partially", "success"]);
+  const failedStates = new Set(["cancelled", "canceled", "failed", "expired", "error"]);
+
+  try {
+    if (successfulStates.has(status)) {
+      const amount = Number(payload?.amount || payload?.paid_amount || payload?.payment_amount);
+      await activateSubscription(reference, {
+        providerInvoiceId: payload?.uuid || payload?.payment_uuid || payload?.invoice_uuid || null,
+        amountUSD: Number.isFinite(amount) ? amount : undefined,
+        currency: payload?.currency || "USD",
+        metadata: payload
+      });
+    } else if (failedStates.has(status)) {
+      await markSubscriptionStatus(reference, SUBSCRIPTION_STATUS.FAILED, { metadata: payload });
+    }
+  } catch (err) {
+    console.error("Cryptomus webhook handling error", err);
+    return res.status(500).json({ error: "Failed to process Cryptomus webhook" });
+  }
+
+  res.json({ received: true });
+});
 
 app.use("/", express.static(path.join(__dirname, "public")));
 
