@@ -277,17 +277,44 @@ async function processSnapshot(snapshot, lastTradeId, hooks) {
   }
 }
 
-export function runEngine(getSnapshots, hooks = {}) {
+export function createEngineProcessor(hooks = {}) {
   const lastTradeId = new Map();
 
+  async function processSnapshotWrapper(snapshot = {}) {
+    await processSnapshot(snapshot, lastTradeId, hooks);
+  }
+
+  async function processBatch(snapshots = []) {
+    for (const snapshot of Array.isArray(snapshots) ? snapshots : []) {
+      try {
+        await processSnapshotWrapper(snapshot || {});
+      } catch (err) {
+        console.error("[ENGINE] batch error", err?.message || err);
+      }
+    }
+  }
+
+  function reset() {
+    lastTradeId.clear();
+  }
+
+  return {
+    processSnapshot: processSnapshotWrapper,
+    processBatch,
+    reset
+  };
+}
+
+export function runEngine(getSnapshots, hooks = {}) {
+  const processor = createEngineProcessor(hooks);
+  let running = true;
+
   async function loop() {
-    while (true) {
+    while (running) {
       try {
         const snapshots = await getSnapshots();
         if (Array.isArray(snapshots)) {
-          for (const snapshot of snapshots) {
-            await processSnapshot(snapshot || {}, lastTradeId, hooks);
-          }
+          await processor.processBatch(snapshots);
         }
       } catch (err) {
         console.error("[ENGINE]", err.message);
@@ -297,4 +324,13 @@ export function runEngine(getSnapshots, hooks = {}) {
   }
 
   loop();
+
+  return {
+    stop() {
+      running = false;
+      processor.reset();
+    }
+  };
 }
+
+export { processSnapshot };
