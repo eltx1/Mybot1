@@ -1,7 +1,5 @@
 import crypto from "crypto";
 import fetch from "node-fetch";
-import fs from "fs";
-
 const DEFAULT_BASE = process.env.BINANCE_BASE || "https://api.binance.com";
 const DEFAULT_RETRY_ATTEMPTS = Math.max(1, Number(process.env.BINANCE_RETRY_ATTEMPTS || 3));
 const RETRY_BACKOFF_BASE = Math.max(50, Number(process.env.BINANCE_RETRY_BACKOFF || 200));
@@ -44,25 +42,11 @@ async function fetchWithRetry(url, options) {
   throw lastError;
 }
 
-function loadFallbackCredentials() {
-  try {
-    const raw = fs.readFileSync("binance-keys.json", "utf8");
-    const creds = JSON.parse(raw);
-    return {
-      apiKey: creds.BINANCE_KEY,
-      apiSecret: creds.BINANCE_SECRET
-    };
-  } catch {
-    return { apiKey: process.env.BINANCE_KEY, apiSecret: process.env.BINANCE_SECRET };
-  }
-}
-
 export function createBinanceClient(options = {}) {
   const {
     apiKey: providedKey,
     apiSecret: providedSecret,
-    base = DEFAULT_BASE,
-    fallbackToFile = true
+    base = DEFAULT_BASE
   } = options;
 
   let apiKey = providedKey;
@@ -86,15 +70,9 @@ export function createBinanceClient(options = {}) {
     map.set(key, { value, expiresAt: Date.now() + ttl });
   }
 
-  if ((!apiKey || !apiSecret) && fallbackToFile) {
-    const fallback = loadFallbackCredentials();
-    apiKey = fallback.apiKey;
-    apiSecret = fallback.apiSecret;
-  }
-
   function ensureCreds() {
     if (!apiKey || !apiSecret) {
-      throw new Error("BINANCE_KEY and BINANCE_SECRET are required");
+      throw new Error("This operation requires a Binance API key and secret");
     }
   }
 
