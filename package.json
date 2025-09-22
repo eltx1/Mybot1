@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "NODE_ENV=development node server.js",
-    "postinstall": "node -e \"const fs=require('fs');const p='./data';if(!fs.existsSync(p))fs.mkdirSync(p,{recursive:true});if(!fs.existsSync(p+'/rules.json'))fs.writeFileSync(p+'/rules.json','[]');\""
+    "postinstall": "node -e \"const fs=require('fs');const p='./data';if(!fs.existsSync(p))fs.mkdirSync(p,{recursive:true});if(!fs.existsSync(p+'/rules.json'))fs.writeFileSync(p+'/rules.json','[]');\"",
+    "test": "node --test"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

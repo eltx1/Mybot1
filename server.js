@@ -22,8 +22,9 @@ import {
   createHash,
   randomBytes
 } from "crypto";
-import { runEngine } from "./strategy.js";
+import EngineManager from "./engine/manager.js";
 import { createBinanceClient } from "./binance.js";
+import { summariseCompletedTrades } from "./lib/trades.js";
 
 const app = express();
 app.use(express.json({
@@ -133,151 +134,15 @@ const DEFAULT_AI_BUDGET = (() => {
   return Number.isFinite(raw) && raw > 0 ? raw : 100;
 })();
 
-const KNOWN_QUOTE_ASSETS = [
-  "USDT",
-  "USDC",
-  "BUSD",
-  "FDUSD",
-  "TUSD",
-  "USDP",
-  "DAI",
-  "BIDR",
-  "TRY",
-  "EUR",
-  "BTC",
-  "ETH",
-  "BNB"
-];
+const ENGINE_INTERVAL_MS = Number(process.env.ENGINE_INTERVAL_MS || 5000);
+const SNAPSHOT_CONCURRENCY = Math.max(1, Number(process.env.ENGINE_SNAPSHOT_CONCURRENCY || 4));
+const credentialCache = new Map();
+let engineManager;
+const ADMIN_EMAILS = new Set((process.env.ADMIN_EMAILS || "")
+  .split(",")
+  .map(email => email.trim().toLowerCase())
+  .filter(Boolean));
 
-function splitSymbolPair(symbol) {
-  if (!symbol) return { base: "", quote: "" };
-  const upper = String(symbol).toUpperCase();
-  for (const quote of KNOWN_QUOTE_ASSETS) {
-    if (upper.endsWith(quote) && upper.length > quote.length) {
-      return { base: upper.slice(0, upper.length - quote.length), quote };
-    }
-  }
-  const fallbackIndex = Math.max(3, upper.length - 4);
-  return {
-    base: upper.slice(0, fallbackIndex),
-    quote: upper.slice(fallbackIndex)
-  };
-}
-
-function toFiniteNumber(value) {
-  const num = Number(value);
-  return Number.isFinite(num) ? num : 0;
-}
-
-function summariseCompletedTrades(trades, symbol) {
-  if (!Array.isArray(trades) || !trades.length) return [];
-  const { base, quote } = splitSymbolPair(symbol || "");
-  const sorted = [...trades].sort((a, b) => Number(a?.time || 0) - Number(b?.time || 0));
-  const results = [];
-  const EPSILON = 1e-8;
-  let position = null;
-
-  for (const trade of sorted) {
-    const isBuyer = Boolean(trade?.isBuyer);
-    const price = toFiniteNumber(trade?.price);
-    const qty = toFiniteNumber(trade?.qty ?? trade?.executedQty);
-    const quoteQty = toFiniteNumber(trade?.quoteQty ?? price * qty);
-    const commission = toFiniteNumber(trade?.commission);
-    const commissionAsset = typeof trade?.commissionAsset === "string" ? trade.commissionAsset.toUpperCase() : "";
-    const timestamp = Number(trade?.time || trade?.transactTime || Date.now());
-    const tradePrice = qty > 0
-      ? (price > 0 ? price : (quoteQty > 0 ? quoteQty / qty : 0))
-      : 0;
-
-    if (!(qty > 0) || !(quoteQty >= 0)) {
-      continue;
-    }
-
-    if (isBuyer) {
-      if (!position) {
-        position = {
-          baseBought: 0,
-          baseSold: 0,
-          quoteSpent: 0,
-          quoteReceived: 0,
-          firstBuyTime: timestamp,
-          lastTradeTime: timestamp
-        };
-      }
-      position.baseBought += qty;
-      position.quoteSpent += quoteQty;
-      if (commission && commissionAsset === quote) {
-        position.quoteSpent += commission;
-      } else if (commission && commissionAsset === base) {
-        position.baseBought -= commission;
-      }
-      if (position.baseBought < 0) position.baseBought = 0;
-      if (!position.firstBuyTime) position.firstBuyTime = timestamp;
-      position.lastTradeTime = timestamp;
-      continue;
-    }
-
-    if (!position) {
-      continue;
-    }
-
-    position.baseSold += qty;
-    position.quoteReceived += quoteQty;
-    if (commission && commissionAsset === quote) {
-      position.quoteReceived -= commission;
-    } else if (commission && commissionAsset === base) {
-      const conversionPrice = tradePrice > 0
-        ? tradePrice
-        : (position.baseSold > EPSILON && position.quoteReceived > 0
-            ? position.quoteReceived / position.baseSold
-            : 0);
-      if (conversionPrice > 0) {
-        position.quoteReceived -= commission * conversionPrice;
-      }
-    }
-    if (position.baseSold < 0) position.baseSold = 0;
-    if (position.quoteReceived < 0) position.quoteReceived = 0;
-    position.lastTradeTime = timestamp;
-
-    if (position.baseBought > EPSILON && position.baseSold >= position.baseBought - EPSILON) {
-      const baseBought = position.baseBought;
-      const baseSold = position.baseSold;
-      const quoteSpent = position.quoteSpent;
-      const quoteReceived = position.quoteReceived;
-
-      if (baseBought > EPSILON && baseSold > EPSILON && Number.isFinite(quoteSpent) && Number.isFinite(quoteReceived)) {
-        const quantity = Math.max(0, Math.min(baseBought, baseSold));
-        if (quantity > EPSILON) {
-          const buyDenominator = baseBought > EPSILON ? baseBought : quantity;
-          const sellDenominator = quantity > EPSILON ? quantity : baseSold;
-          const buyPrice = buyDenominator > EPSILON ? quoteSpent / buyDenominator : 0;
-          const sellPrice = sellDenominator > EPSILON ? quoteReceived / sellDenominator : 0;
-          const profit = quoteReceived - quoteSpent;
-          const profitPct = quoteSpent !== 0 ? (profit / quoteSpent) * 100 : 0;
-          const openedAt = position.firstBuyTime || timestamp;
-          const closedAt = position.lastTradeTime || timestamp;
-          results.push({
-            symbol: String(symbol || "").toUpperCase(),
-            baseAsset: base,
-            quoteAsset: quote,
-            quantity,
-            buyPrice,
-            sellPrice,
-            profit,
-            profitPct,
-            openedAt,
-            closedAt,
-            durationMs: Math.max(0, closedAt - openedAt)
-          });
-        }
-      }
-
-      position = null;
-    }
-  }
-
-  return results;
-}
 
 function encryptionKey() {
   if (!CREDENTIALS_SECRET) {
@@ -458,6 +323,90 @@ async function listActivePlans() {
      FROM plans WHERE is_active = 1 ORDER BY price_usd ASC, id ASC`
   );
   return rows.map(mapPlanRow);
+}
+
+async function listAllPlans() {
+  const [rows] = await pool.query(
+    `SELECT id, code, name, description, manual_enabled, ai_enabled, manual_limit, ai_limit, duration_days, price_usd, is_active
+     FROM plans ORDER BY price_usd ASC, id ASC`
+  );
+  return rows.map(mapPlanRow);
+}
+
+function normalizePlanPayload(payload = {}) {
+  const code = typeof payload.code === "string" ? payload.code.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-") : "";
+  const name = typeof payload.name === "string" ? payload.name.trim() : "";
+  const description = typeof payload.description === "string" ? payload.description.trim() : "";
+  const manualEnabled = payload.manualEnabled !== false;
+  const aiEnabled = payload.aiEnabled === true || payload.aiEnabled === 1;
+  const manualLimit = Number(payload.manualLimit);
+  const aiLimit = Number(payload.aiLimit);
+  const durationDays = Number(payload.durationDays);
+  const priceUSD = Number(payload.priceUSD);
+  const isActive = payload.isActive !== false;
+
+  return {
+    code,
+    name,
+    description,
+    manualEnabled,
+    aiEnabled,
+    manualLimit: Number.isFinite(manualLimit) ? manualLimit : 0,
+    aiLimit: Number.isFinite(aiLimit) ? aiLimit : 0,
+    durationDays: Number.isFinite(durationDays) ? Math.max(1, durationDays) : 30,
+    priceUSD: Number.isFinite(priceUSD) ? Math.max(0, priceUSD) : 0,
+    isActive: Boolean(isActive)
+  };
+}
+
+async function createPlan(payload) {
+  const plan = normalizePlanPayload(payload);
+  if (!plan.code || !plan.name) {
+    throw new Error("Plan code and name are required");
+  }
+  const [result] = await pool.query(
+    `INSERT INTO plans (code, name, description, manual_enabled, ai_enabled, manual_limit, ai_limit, duration_days, price_usd, is_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+    [
+      plan.code,
+      plan.name,
+      plan.description,
+      plan.manualEnabled ? 1 : 0,
+      plan.aiEnabled ? 1 : 0,
+      plan.manualLimit,
+      plan.aiLimit,
+      plan.durationDays,
+      plan.priceUSD,
+      plan.isActive ? 1 : 0
+    ]
+  );
+  return getPlanById(result.insertId);
+}
+
+async function updatePlan(planId, payload) {
+  const existing = await getPlanById(planId);
+  if (!existing) {
+    throw new Error("Plan not found");
+  }
+  const plan = normalizePlanPayload({ ...existing, ...payload });
+  await pool.query(
+    `UPDATE plans SET code = ?, name = ?, description = ?, manual_enabled = ?, ai_enabled = ?, manual_limit = ?, ai_limit = ?, duration_days = ?, price_usd = ?, is_active = ?
+     WHERE id = ? LIMIT 1`,
+    [
+      plan.code,
+      plan.name,
+      plan.description,
+      plan.manualEnabled ? 1 : 0,
+      plan.aiEnabled ? 1 : 0,
+      plan.manualLimit,
+      plan.aiLimit,
+      plan.durationDays,
+      plan.priceUSD,
+      plan.isActive ? 1 : 0,
+      planId
+    ]
+  );
+  return getPlanById(planId);
 }
 
 async function getPlanById(planId) {
@@ -752,6 +701,35 @@ async function listRecentSubscriptions(userId, limit = 8) {
      ORDER BY s.created_at DESC
      LIMIT ?`,
     [userId, size]
+  );
+  return rows.map(mapSubscriptionRow);
+}
+
+async function listSubscriptions(options = {}) {
+  const size = Math.max(1, Math.min(Number(options.limit) || 50, 200));
+  const filters = [];
+  const values = [];
+  if (options.status) {
+    filters.push("s.status = ?");
+    values.push(options.status);
+  }
+  if (options.userId) {
+    filters.push("s.user_id = ?");
+    values.push(options.userId);
+  }
+  const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+  const [rows] = await pool.query(
+    `SELECT s.*, p.id AS plan_id_internal, p.code AS plan_code, p.name AS plan_name, p.description AS plan_description,
+            p.manual_enabled AS plan_manual_enabled, p.ai_enabled AS plan_ai_enabled,
+            p.manual_limit AS plan_manual_limit, p.ai_limit AS plan_ai_limit,
+            p.duration_days AS plan_duration_days, p.price_usd AS plan_price_usd,
+            p.is_active AS plan_is_active
+     FROM user_subscriptions s
+     INNER JOIN plans p ON p.id = s.plan_id
+     ${where}
+     ORDER BY s.created_at DESC
+     LIMIT ?`,
+    [...values, size]
   );
   return rows.map(mapSubscriptionRow);
 }
@@ -1326,6 +1304,21 @@ function authRequired(handler) {
   };
 }
 
+function isAdminUser(user) {
+  if (!user || ADMIN_EMAILS.size === 0) return false;
+  const email = typeof user.email === "string" ? user.email.toLowerCase() : "";
+  return ADMIN_EMAILS.has(email);
+}
+
+function adminRequired(handler) {
+  return authRequired(async (req, res, next) => {
+    if (!isAdminUser(req.user)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    return handler(req, res, next);
+  });
+}
+
 function handleAsync(fn) {
   return async (req, res) => {
     try {
@@ -1399,6 +1392,24 @@ app.get("/api/auth/me", authRequired(handleAsync(async (req, res) => {
   ]);
   res.json({ user: req.user, hasApiKeys: hasKeys, subscription });
 })));
+
+app.get("/api/health", handleAsync(async (req, res) => {
+  let database = { ok: true };
+  try {
+    await pool.query("SELECT 1");
+  } catch (err) {
+    database = { ok: false, error: err.message };
+  }
+  const engineMetrics = engineManager ? engineManager.getMetrics() : null;
+  const ok = database.ok && (!engineMetrics || (engineMetrics.workerReady && !engineMetrics.lastError));
+  res.json({
+    status: ok ? "ok" : "degraded",
+    timestamp: Date.now(),
+    uptime: process.uptime(),
+    engine: engineMetrics,
+    database
+  });
+}));
 
 app.get("/api/users/api-keys", authRequired(handleAsync(async (req, res) => {
   const [rows] = await pool.query(
@@ -1989,6 +2000,68 @@ app.get("/api/plans", handleAsync(async (req, res) => {
   });
 }));
 
+app.get("/api/admin/plans", adminRequired(handleAsync(async (req, res) => {
+  const plans = await listAllPlans();
+  res.json({ plans });
+})));
+
+app.post("/api/admin/plans", adminRequired(handleAsync(async (req, res) => {
+  const plan = await createPlan(req.body || {});
+  res.status(201).json({ plan });
+})));
+
+app.put("/api/admin/plans/:id", adminRequired(handleAsync(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    return res.status(400).json({ error: "Invalid plan id" });
+  }
+  const plan = await updatePlan(id, req.body || {});
+  res.json({ plan });
+})));
+
+app.get("/api/admin/subscriptions", adminRequired(handleAsync(async (req, res) => {
+  const { limit, status, userId } = req.query || {};
+  const normalizedStatus = Object.values(SUBSCRIPTION_STATUS).includes(status) ? status : undefined;
+  const userFilter = Number(userId);
+  const items = await listSubscriptions({
+    limit,
+    status: normalizedStatus,
+    userId: Number.isFinite(userFilter) && userFilter > 0 ? userFilter : undefined
+  });
+  res.json({ subscriptions: items });
+})));
+
+app.post("/api/admin/subscriptions/:reference/status", adminRequired(handleAsync(async (req, res) => {
+  const reference = req.params.reference;
+  const status = req.body?.status;
+  if (!reference || typeof status !== "string" || !Object.values(SUBSCRIPTION_STATUS).includes(status)) {
+    return res.status(400).json({ error: "Invalid status" });
+  }
+  const updated = await markSubscriptionStatus(reference, status, req.body || {});
+  res.json({ subscription: updated });
+})));
+
+app.post("/api/admin/subscriptions/:reference/activate", adminRequired(handleAsync(async (req, res) => {
+  const reference = req.params.reference;
+  if (!reference) {
+    return res.status(400).json({ error: "Reference is required" });
+  }
+  const overrides = {
+    startedAt: req.body?.startedAt,
+    expiresAt: req.body?.expiresAt,
+    amountUSD: req.body?.amountUSD,
+    currency: req.body?.currency,
+    metadata: req.body?.metadata,
+    providerInvoiceId: req.body?.providerInvoiceId,
+    providerSessionId: req.body?.providerSessionId
+  };
+  const subscription = await activateSubscription(reference, overrides);
+  if (!subscription) {
+    return res.status(404).json({ error: "Subscription not found" });
+  }
+  res.json({ subscription });
+})));
+
 app.get("/healthz", handleAsync(async (req, res) => {
   try {
     const [rows] = await pool.query("SELECT COUNT(*) as count FROM rules");
@@ -2105,18 +2178,58 @@ async function getEngineSnapshots() {
      FROM users u
      INNER JOIN user_api_keys k ON k.user_id = u.id`
   );
-  const snapshots = [];
-  for (const row of rows) {
-    const apiKey = decryptSecret(row.api_key);
-    const apiSecret = decryptSecret(row.api_secret);
-    if (!apiKey || !apiSecret) continue;
+  const tasks = Array.isArray(rows) ? rows : [];
+
+  async function mapWithConcurrency(items, mapper, limit = SNAPSHOT_CONCURRENCY) {
+    const size = Math.max(1, Math.min(limit, items.length || 0));
+    const results = new Array(items.length);
+    let pointer = 0;
+
+    async function worker() {
+      while (true) {
+        const index = pointer;
+        if (index >= items.length) break;
+        pointer += 1;
+        try {
+          results[index] = await mapper(items[index], index);
+        } catch (err) {
+          console.error("[ENGINE] snapshot build error", err);
+          results[index] = null;
+        }
+      }
+    }
+
+    const workers = [];
+    for (let i = 0; i < size; i += 1) {
+      workers.push(worker());
+    }
+    await Promise.all(workers);
+    return results;
+  }
+
+  const snapshots = await mapWithConcurrency(tasks, async row => {
+    const cacheKey = row.user_id;
+    let cached = credentialCache.get(cacheKey);
+    if (!cached || cached.rawKey !== row.api_key || cached.rawSecret !== row.api_secret) {
+      const apiKey = decryptSecret(row.api_key);
+      const apiSecret = decryptSecret(row.api_secret);
+      cached = { rawKey: row.api_key, rawSecret: row.api_secret, apiKey, apiSecret };
+      credentialCache.set(cacheKey, cached);
+    }
+    if (!cached.apiKey || !cached.apiSecret) return null;
+
     const rules = await readRules(row.user_id);
     const active = rules.filter(r => r.enabled);
-    if (!active.length) continue;
-    const binance = createBinanceClient({ apiKey, apiSecret, fallbackToFile: false });
-    snapshots.push({ userId: row.user_id, binance, rules: active });
-  }
-  return snapshots;
+    if (!active.length) return null;
+
+    return {
+      userId: row.user_id,
+      credentials: { apiKey: cached.apiKey, apiSecret: cached.apiSecret },
+      rules: active
+    };
+  });
+
+  return snapshots.filter(Boolean);
 }
 
 async function bootstrap() {
@@ -2124,14 +2237,19 @@ async function bootstrap() {
   app.listen(PORT, () => {
     console.log("my1 platform running on port", PORT);
   });
-  runEngine(getEngineSnapshots, {
-    reportRuleIssue: async ({ userId, ruleId, code, message }) => {
-      await upsertRuleError({ userId, ruleId, code, message });
-    },
-    clearRuleIssue: async ({ userId, ruleId }) => {
-      await clearRuleError(userId, ruleId);
+  engineManager = new EngineManager({
+    getSnapshots: getEngineSnapshots,
+    intervalMs: ENGINE_INTERVAL_MS,
+    hooks: {
+      reportRuleIssue: async ({ userId, ruleId, code, message }) => {
+        await upsertRuleError({ userId, ruleId, code, message });
+      },
+      clearRuleIssue: async ({ userId, ruleId }) => {
+        await clearRuleError(userId, ruleId);
+      }
     }
   });
+  engineManager.start();
 }
 
 bootstrap().catch(err => {
