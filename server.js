@@ -1650,7 +1650,7 @@ app.get("/api/orders", authRequired(handleAsync(async (req, res) => {
   if (!symbols.length) {
     return res.json([]);
   }
-  const client = createBinanceClient({ apiKey: creds.apiKey, apiSecret: creds.apiSecret, fallbackToFile: false });
+  const client = createBinanceClient({ apiKey: creds.apiKey, apiSecret: creds.apiSecret });
   const data = [];
   for (const symbol of symbols) {
     try {
@@ -1675,7 +1675,7 @@ app.get("/api/trades/completed", authRequired(handleAsync(async (req, res) => {
     return res.json({ trades: [], errors: [] });
   }
 
-  const client = createBinanceClient({ apiKey: creds.apiKey, apiSecret: creds.apiSecret, fallbackToFile: false });
+  const client = createBinanceClient({ apiKey: creds.apiKey, apiSecret: creds.apiSecret });
   const trades = [];
   const errors = [];
 

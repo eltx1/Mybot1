@@ -42,8 +42,7 @@ function ensureBinanceClient(userId, credentials = {}) {
   }
   const client = createBinanceClient({
     apiKey: credentials.apiKey,
-    apiSecret: credentials.apiSecret,
-    fallbackToFile: false
+    apiSecret: credentials.apiSecret
   });
   binanceCache.set(key, { client, fingerprint });
   return client;
