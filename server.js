@@ -49,6 +49,24 @@ app.use((req, res, next) => {
   next();
 });
 
+const API_NO_CACHE_PATTERNS = [
+  /^\/api\//,
+  /^\/healthz$/,
+  /^\/api\/health$/,
+  /^\/webhooks\//
+];
+
+app.use((req, res, next) => {
+  const path = typeof req.path === "string" ? req.path : req.url || "";
+  if (API_NO_CACHE_PATTERNS.some(pattern => pattern.test(path))) {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.setHeader("Surrogate-Control", "no-store");
+  }
+  next();
+});
+
 const dbConfig = {
   host: process.env.DB_HOST || "localhost",
   user: process.env.DB_USER || "root",
