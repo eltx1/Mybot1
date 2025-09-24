@@ -27,6 +27,7 @@ import {
 import EngineManager from "./engine/manager.js";
 import { createBinanceClient } from "./binance.js";
 import { summariseCompletedTrades, calculatePerformanceMetrics } from "./lib/trades.js";
+import { fetchMarketSentiment } from "./lib/market-sentiment.js";
 
 const app = express();
 app.use(express.json({
@@ -119,6 +120,29 @@ const PAYMENT_PROVIDERS = {
   stripe: Boolean(stripeClient),
   cryptomus: Boolean(CRYPTOMUS_MERCHANT_ID && CRYPTOMUS_PAYMENT_KEY)
 };
+
+const DEFAULT_SENTIMENT_LIMIT = Math.max(3, Number(process.env.MARKET_SENTIMENT_HEADLINES || 6));
+const MARKET_SNAPSHOT_LIMIT = Math.max(6, Number(process.env.MARKET_SNAPSHOT_LIMIT || 12));
+
+function getNumber(value, fallback = 0) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function roundNumber(value, decimals = 2) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  const places = Math.max(0, Number(decimals) || 0);
+  return Number(num.toFixed(places));
+}
+
+function clampNumber(value, min = 0, max = 1) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return min;
+  if (num < min) return min;
+  if (num > max) return max;
+  return num;
+}
 
 const SUBSCRIPTION_STATUS = {
   PENDING: "pending",
@@ -278,6 +302,151 @@ function safeJSONParse(value) {
   } catch {
     return null;
   }
+}
+
+async function fetchMarketSnapshot(limit = MARKET_SNAPSHOT_LIMIT) {
+  const size = Math.max(1, Math.min(50, Number(limit) || MARKET_SNAPSHOT_LIMIT));
+  try {
+    const response = await fetch("https://api.binance.com/api/v3/ticker/24hr");
+    if (!response.ok) {
+      console.error("Failed to fetch Binance market snapshot", response.status);
+      return [];
+    }
+    const payload = await response.json();
+    if (!Array.isArray(payload)) return [];
+    return payload
+      .filter(item => typeof item?.symbol === "string" && item.symbol.endsWith("USDT"))
+      .map(item => ({
+        symbol: item.symbol,
+        lastPrice: getNumber(item.lastPrice || item.last || item.price),
+        priceChangePercent: getNumber(item.priceChangePercent),
+        highPrice: getNumber(item.highPrice),
+        lowPrice: getNumber(item.lowPrice),
+        volume: getNumber(item.volume),
+        quoteVolume: getNumber(item.quoteVolume)
+      }))
+      .filter(item => item.lastPrice > 0)
+      .sort((a, b) => (b.quoteVolume || 0) - (a.quoteVolume || 0))
+      .slice(0, size);
+  } catch (err) {
+    console.error("Failed to fetch Binance market snapshot", err);
+    return [];
+  }
+}
+
+async function fetchUserTradeSummaries({ userId, symbols, limit = 200 } = {}) {
+  if (!userId) {
+    return { trades: [], metrics: calculatePerformanceMetrics([]), errors: ["Missing userId"], symbols: [], bySymbol: {} };
+  }
+  const creds = await getUserApiKeys(userId);
+  if (!creds) {
+    return {
+      trades: [],
+      metrics: calculatePerformanceMetrics([]),
+      errors: ["Connect your Binance API keys first"],
+      symbols: [],
+      bySymbol: {},
+      missingKeys: true
+    };
+  }
+
+  let targetSymbols = Array.isArray(symbols) && symbols.length
+    ? symbols.map(s => String(s || "").toUpperCase()).filter(Boolean)
+    : null;
+
+  if (!targetSymbols) {
+    const rules = await readRules(userId);
+    targetSymbols = Array.from(new Set(rules.map(r => (r.symbol || "").toUpperCase()).filter(Boolean)));
+  } else {
+    targetSymbols = Array.from(new Set(targetSymbols));
+  }
+
+  if (!targetSymbols.length) {
+    return { trades: [], metrics: calculatePerformanceMetrics([]), errors: [], symbols: [], bySymbol: {} };
+  }
+
+  const client = createBinanceClient({ apiKey: creds.apiKey, apiSecret: creds.apiSecret });
+  const trades = [];
+  const errors = [];
+  const bySymbol = new Map();
+  const fetchLimit = Math.max(20, Math.min(1000, Number(limit) || 200));
+
+  for (const symbol of targetSymbols) {
+    try {
+      const history = await client.myTrades(symbol, fetchLimit);
+      const summaries = summariseCompletedTrades(Array.isArray(history) ? history : [], symbol);
+      bySymbol.set(symbol, summaries);
+      if (summaries.length) {
+        trades.push(...summaries);
+      }
+    } catch (err) {
+      errors.push(`${symbol}: ${err?.message || err}`);
+      bySymbol.set(symbol, []);
+    }
+  }
+
+  trades.sort((a, b) => Number(b?.closedAt || 0) - Number(a?.closedAt || 0));
+  const metrics = calculatePerformanceMetrics(trades);
+  return {
+    trades,
+    metrics,
+    errors,
+    symbols: targetSymbols,
+    bySymbol: Object.fromEntries(bySymbol)
+  };
+}
+
+function summarizeRulePerformance(rule, trades = []) {
+  const createdAt = Number(rule.createdAt) || 0;
+  const orderedTrades = [...trades].sort((a, b) => Number(b?.closedAt || 0) - Number(a?.closedAt || 0));
+  const relevantTrades = orderedTrades.filter(trade => {
+    if (!trade || typeof trade !== "object") return false;
+    const closedAt = Number(trade.closedAt || trade.openedAt || 0);
+    if (createdAt > 0 && closedAt > 0) {
+      return closedAt >= createdAt;
+    }
+    return true;
+  });
+  const metrics = calculatePerformanceMetrics(relevantTrades);
+  const recentTrades = relevantTrades.slice(0, 5).map(item => ({
+    closedAt: item.closedAt,
+    profit: roundNumber(item.profit, 6),
+    profitPct: roundNumber(item.profitPct, 4),
+    durationMs: getNumber(item.durationMs),
+    buyPrice: roundNumber(item.buyPrice, 6),
+    sellPrice: roundNumber(item.sellPrice, 6),
+    quantity: roundNumber(item.quantity, 6)
+  }));
+  return {
+    ruleId: rule.id,
+    symbol: rule.symbol,
+    enabled: Boolean(rule.enabled),
+    createdAt,
+    createdAtIso: createdAt ? new Date(createdAt).toISOString() : null,
+    entryPrice: getNumber(rule.entryPrice) || null,
+    exitPrice: getNumber(rule.exitPrice) || null,
+    budgetUSDT: getNumber(rule.budgetUSDT),
+    aiSummary: typeof rule.aiSummary === "string" ? rule.aiSummary : null,
+    tradesAnalyzed: relevantTrades.length,
+    metrics: {
+      totalTrades: metrics.totalTrades,
+      totalProfit: roundNumber(metrics.totalProfit, 6),
+      averageProfitPct: roundNumber(metrics.averageProfitPct, 4),
+      winRate: roundNumber(metrics.winRate, 2),
+      averageHoldHours: roundNumber((metrics.averageHoldMs || 0) / 3600000, 2),
+      bestTrade: metrics.bestTrade ? {
+        profit: roundNumber(metrics.bestTrade.profit, 6),
+        profitPct: roundNumber(metrics.bestTrade.profitPct, 4),
+        closedAt: metrics.bestTrade.closedAt
+      } : null,
+      worstTrade: metrics.worstTrade ? {
+        profit: roundNumber(metrics.worstTrade.profit, 6),
+        profitPct: roundNumber(metrics.worstTrade.profitPct, 4),
+        closedAt: metrics.worstTrade.closedAt
+      } : null
+    },
+    recentTrades
+  };
 }
 
 function canonicaliseCryptomusPayload(value) {
@@ -613,6 +782,21 @@ async function initDb() {
     `);
 
     await conn.query(`
+      CREATE TABLE IF NOT EXISTS ai_rule_feedback (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        model VARCHAR(100) DEFAULT NULL,
+        prompt LONGTEXT DEFAULT NULL,
+        response_json LONGTEXT DEFAULT NULL,
+        metrics_json LONGTEXT DEFAULT NULL,
+        sentiment_json LONGTEXT DEFAULT NULL,
+        created_at BIGINT NOT NULL,
+        CONSTRAINT fk_ai_feedback_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        INDEX idx_ai_feedback_user (user_id, created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await conn.query(`
       CREATE TABLE IF NOT EXISTS plans (
         id INT AUTO_INCREMENT PRIMARY KEY,
         code VARCHAR(64) NOT NULL UNIQUE,
@@ -700,6 +884,62 @@ async function upsertUserApiKeys(userId, apiKey, apiSecret) {
 
 async function deleteUserApiKeys(userId) {
   await pool.query("DELETE FROM user_api_keys WHERE user_id = ?", [userId]);
+}
+
+function mapAiFeedbackRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    userId: row.user_id,
+    model: row.model || null,
+    createdAt: Number(row.created_at) || Date.now(),
+    feedback: safeJSONParse(row.response_json) || null,
+    metrics: safeJSONParse(row.metrics_json) || null,
+    sentiment: safeJSONParse(row.sentiment_json) || null
+  };
+}
+
+async function recordAiFeedback({ userId, model, prompt, response, metrics, sentiment }) {
+  if (!userId) throw new Error("userId is required");
+  const createdAt = Date.now();
+  const payload = [
+    userId,
+    model || null,
+    safeJSONStringify(prompt) || null,
+    safeJSONStringify(response) || null,
+    safeJSONStringify(metrics) || null,
+    safeJSONStringify(sentiment) || null,
+    createdAt
+  ];
+  const [result] = await pool.query(
+    `INSERT INTO ai_rule_feedback (user_id, model, prompt, response_json, metrics_json, sentiment_json, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    payload
+  );
+  const id = Number(result?.insertId) || null;
+  return mapAiFeedbackRow({
+    id,
+    user_id: userId,
+    model: model || null,
+    response_json: safeJSONStringify(response),
+    metrics_json: safeJSONStringify(metrics),
+    sentiment_json: safeJSONStringify(sentiment),
+    created_at: createdAt
+  });
+}
+
+async function listAiFeedback(userId, options = {}) {
+  if (!userId) return [];
+  const limit = Math.max(1, Math.min(20, Number(options.limit) || 5));
+  const [rows] = await pool.query(
+    `SELECT id, user_id, model, response_json, metrics_json, sentiment_json, created_at
+     FROM ai_rule_feedback
+     WHERE user_id = ?
+     ORDER BY created_at DESC
+     LIMIT ?`,
+    [userId, limit]
+  );
+  return rows.map(mapAiFeedbackRow);
 }
 
 async function getSecuritySettings(userId, options = {}) {
@@ -2232,36 +2472,10 @@ app.get("/api/orders", authRequired(handleAsync(async (req, res) => {
 })));
 
 app.get("/api/trades/completed", authRequired(handleAsync(async (req, res) => {
-  const creds = await getUserApiKeys(req.user.id);
-  if (!creds) {
+  const { trades, metrics, errors, missingKeys } = await fetchUserTradeSummaries({ userId: req.user.id, limit: 50 });
+  if (missingKeys) {
     return res.status(400).json({ error: "Connect your Binance API keys first" });
   }
-
-  const rules = await readRules(req.user.id);
-  const symbols = Array.from(new Set(rules.map(r => (r.symbol || "").toUpperCase()).filter(Boolean)));
-  if (!symbols.length) {
-    return res.json({ trades: [], errors: [] });
-  }
-
-  const client = createBinanceClient({ apiKey: creds.apiKey, apiSecret: creds.apiSecret });
-  const trades = [];
-  const errors = [];
-
-  for (const symbol of symbols) {
-    try {
-      const history = await client.myTrades(symbol, 50);
-      const summaries = summariseCompletedTrades(Array.isArray(history) ? history : [], symbol);
-      if (summaries.length) {
-        trades.push(...summaries);
-      }
-    } catch (err) {
-      errors.push(`${symbol}: ${err.message}`);
-    }
-  }
-
-  trades.sort((a, b) => Number(b?.closedAt || 0) - Number(a?.closedAt || 0));
-  const metrics = calculatePerformanceMetrics(trades);
-
   res.json({
     trades: trades.slice(0, 20),
     metrics,
@@ -2380,6 +2594,67 @@ function parseAiRoleResponse(text) {
   return { symbol, entryPrice, exitPrice, raw: cleaned, summary: summary || undefined };
 }
 
+function parseAiFeedbackResponse(text) {
+  if (!text) throw new Error("AI response was empty.");
+  const cleaned = text.replace(/```json|```/gi, "").trim();
+  if (!cleaned) throw new Error("AI response was empty.");
+  let parsed;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (err) {
+    throw new Error("AI response was not valid JSON.");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("AI response did not contain the expected object.");
+  }
+
+  const updates = Array.isArray(parsed.updates) ? parsed.updates : [];
+  const normalizedUpdates = updates
+    .map(update => {
+      if (!update || typeof update !== "object") return null;
+      const ruleId = typeof update.ruleId === "string" && update.ruleId.trim()
+        ? update.ruleId.trim()
+        : typeof update.id === "string" && update.id.trim()
+          ? update.id.trim()
+          : "";
+      if (!ruleId) return null;
+      const action = typeof update.action === "string" ? update.action.trim().toLowerCase() : "review";
+      const confidence = clampNumber(update.confidence, 0, 1);
+      const notes = typeof update.notes === "string" ? update.notes.trim() : "";
+      const adjustments = update.adjustments && typeof update.adjustments === "object"
+        ? {
+            entryPrice: update.adjustments.entryPrice !== undefined ? roundNumber(update.adjustments.entryPrice, 6) : undefined,
+            exitPrice: update.adjustments.exitPrice !== undefined ? roundNumber(update.adjustments.exitPrice, 6) : undefined,
+            budgetUSDT: update.adjustments.budgetUSDT !== undefined ? roundNumber(update.adjustments.budgetUSDT, 2) : undefined
+          }
+        : {};
+      const priority = update.priority !== undefined ? clampNumber(update.priority, 0, 1) : undefined;
+      return {
+        ruleId,
+        action,
+        confidence,
+        priority,
+        notes,
+        adjustments
+      };
+    })
+    .filter(Boolean);
+
+  const globalInsights = typeof parsed.globalInsights === "string" ? parsed.globalInsights.trim() : "";
+  const sentimentSummary = typeof parsed.sentimentSummary === "string" ? parsed.sentimentSummary.trim() : "";
+  const nextSteps = Array.isArray(parsed.nextSteps)
+    ? parsed.nextSteps.map(step => typeof step === "string" ? step.trim() : null).filter(Boolean)
+    : [];
+
+  return {
+    updates: normalizedUpdates,
+    globalInsights,
+    sentimentSummary,
+    nextSteps,
+    raw: cleaned
+  };
+}
+
 app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
   const key = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY;
   if (!key) {
@@ -2404,32 +2679,7 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
     }
   }
 
-  let marketSnapshot = [];
-  try {
-    const response = await fetch("https://api.binance.com/api/v3/ticker/24hr");
-    if (response.ok) {
-      const payload = await response.json();
-      if (Array.isArray(payload)) {
-        marketSnapshot = payload
-          .filter(item => typeof item?.symbol === "string" && item.symbol.endsWith("USDT"))
-          .map(item => ({
-            symbol: item.symbol,
-            lastPrice: Number(item.lastPrice || item.last || item.price || 0),
-            priceChangePercent: Number(item.priceChangePercent || 0),
-            highPrice: Number(item.highPrice || 0),
-            lowPrice: Number(item.lowPrice || 0),
-            volume: Number(item.volume || 0),
-            quoteVolume: Number(item.quoteVolume || 0)
-          }))
-          .filter(item => Number.isFinite(item.lastPrice) && item.lastPrice > 0)
-          .sort((a, b) => (b.quoteVolume || 0) - (a.quoteVolume || 0))
-          .slice(0, 12);
-      }
-    }
-  } catch (err) {
-    console.error("Failed to fetch Binance market snapshot", err);
-    marketSnapshot = [];
-  }
+  const marketSnapshot = await fetchMarketSnapshot(MARKET_SNAPSHOT_LIMIT);
 
   const snapshotText = JSON.stringify(marketSnapshot, null, 2);
   const summaryLanguage = locale === "ar" ? "Arabic" : "English";
@@ -2446,6 +2696,12 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
     "4. Target a quick setup that can realistically fill and close within 24 hours based on liquidity and recent volatility.",
     "5. Account for Binance trading fees on both entry and exit so the net result remains profitable after fees.",
     `6. Mention the supporting data and news you considered inside the summary and write it in ${summaryLanguage}.`
+  ].join("\n");
+
+  const userPrompt = [
+    "Analyse the following trading context and respond using the requested JSON schema.",
+    "DATA:",
+    JSON.stringify(aiInput, null, 2)
   ].join("\n");
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -2557,6 +2813,138 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
 
   res.json({ ok: true, rule: created, entitlements: nextEntitlements });
 }))); 
+
+app.post("/api/ai/feedback", authRequired(handleAsync(async (req, res) => {
+  const key = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY;
+  if (!key) {
+    return res.status(400).json({ error: "OPENAI_API_KEY is required" });
+  }
+
+  const model = typeof req.body?.model === "string" && req.body.model.trim() ? req.body.model.trim() : DEFAULT_AI_MODEL;
+  const includeDisabled = req.body?.includeDisabled === true;
+
+  const { rules: allRules, entitlements } = await readRules(req.user.id, { withEntitlements: true, includeHistory: true });
+  const aiRules = allRules.filter(rule => (rule.type || "").toLowerCase() === "ai" && (includeDisabled || rule.enabled));
+  if (!aiRules.length) {
+    return res.status(400).json({ error: "No AI rules available for review." });
+  }
+
+  const tradeData = await fetchUserTradeSummaries({ userId: req.user.id, symbols: aiRules.map(rule => rule.symbol), limit: 200 });
+  if (tradeData.missingKeys) {
+    return res.status(400).json({ error: "Connect your Binance API keys first" });
+  }
+
+  const marketSnapshot = await fetchMarketSnapshot(MARKET_SNAPSHOT_LIMIT);
+  const sentiment = await fetchMarketSentiment({ limit: DEFAULT_SENTIMENT_LIMIT });
+
+  const bySymbol = tradeData.bySymbol || {};
+  const ruleInsights = aiRules.map(rule => {
+    const symbol = String(rule.symbol || "").toUpperCase();
+    const trades = Array.isArray(bySymbol[symbol]) ? bySymbol[symbol] : [];
+    return summarizeRulePerformance(rule, trades);
+  });
+
+  const overallMetrics = tradeData.metrics || calculatePerformanceMetrics([]);
+  const overallSummary = {
+    totalTrades: overallMetrics.totalTrades,
+    totalProfit: roundNumber(overallMetrics.totalProfit, 6),
+    averageProfitPct: roundNumber(overallMetrics.averageProfitPct, 4),
+    winRate: roundNumber(overallMetrics.winRate, 2),
+    averageHoldHours: roundNumber((overallMetrics.averageHoldMs || 0) / 3600000, 2)
+  };
+
+  const aiInput = {
+    generatedAt: new Date().toISOString(),
+    plan: {
+      aiEnabled: Boolean(entitlements?.aiEnabled),
+      aiLimit: Number.isFinite(entitlements?.aiLimit) ? entitlements.aiLimit : null
+    },
+    account: {
+      totalAiRules: aiRules.length,
+      overallPerformance: overallSummary,
+      recentIssues: tradeData.errors || []
+    },
+    rules: ruleInsights,
+    market: {
+      sentiment,
+      snapshot: marketSnapshot
+    }
+  };
+
+  const instructions = [
+    "You are a senior quantitative crypto trading coach.",
+    "You will receive automated rule performance metrics and current market context.",
+    "Analyse the data and propose concrete actions to keep, adjust, pause, or retire rules.",
+    "For each rule give short notes and optional numeric adjustments.",
+    "Return a JSON object with this schema:",
+    '{"updates":[{"ruleId":"...","action":"keep|adjust|pause|retire","confidence":0-1,"priority":0-1,"notes":"...","adjustments":{"entryPrice":number?,"exitPrice":number?,"budgetUSDT":number?}}],"globalInsights":"...","sentimentSummary":"...","nextSteps":["..."]}',
+    "Focus on the provided performance data. Do not hallucinate symbols that are not listed.",
+    "If data is insufficient, flag the rule for manual review instead of guessing."
+  ].join("\n");
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${key}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.2,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: instructions
+        },
+        {
+          role: "user",
+          content: userPrompt
+        }
+      ]
+    })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    return res.status(502).json({ error: `OpenAI API error: ${errText}` });
+  }
+
+  const payload = await response.json();
+  const text = payload?.choices?.[0]?.message?.content || "";
+  const parsed = parseAiFeedbackResponse(text);
+
+  const record = await recordAiFeedback({
+    userId: req.user.id,
+    model,
+    prompt: aiInput,
+    response: parsed,
+    metrics: {
+      overall: overallSummary,
+      rules: ruleInsights
+    },
+    sentiment
+  });
+
+  res.json({
+    ok: true,
+    feedback: parsed,
+    metrics: {
+      overall: overallSummary,
+      rules: ruleInsights
+    },
+    sentiment,
+    marketSnapshot,
+    errors: tradeData.errors || [],
+    record
+  });
+})));
+
+app.get("/api/ai/feedback", authRequired(handleAsync(async (req, res) => {
+  const limit = Math.max(1, Math.min(20, Number(req.query?.limit) || 5));
+  const items = await listAiFeedback(req.user.id, { limit });
+  res.json({ items });
+})));
 
 app.get("/api/plans", handleAsync(async (req, res) => {
   const plans = await listActivePlans();
