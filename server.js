@@ -28,6 +28,7 @@ import EngineManager from "./engine/manager.js";
 import { createBinanceClient } from "./binance.js";
 import { summariseCompletedTrades, calculatePerformanceMetrics } from "./lib/trades.js";
 import { fetchMarketSentiment } from "./lib/market-sentiment.js";
+import { fetchCoinPriceUSD, fetchCoinMarketSnapshot } from "./lib/coingecko.js";
 
 const app = express();
 app.use(express.json({
@@ -198,6 +199,10 @@ const LOGIN_LOCK_WINDOW_MS = Math.max(60000, Number(process.env.LOGIN_LOCK_WINDO
 const LOGIN_FAILURE_THRESHOLD = Math.max(3, Number(process.env.LOGIN_FAILURE_THRESHOLD || 5));
 const MFA_TOKEN_WINDOW = Math.max(0, Number(process.env.MFA_WINDOW || 1));
 const MFA_STEP_SECONDS = Math.max(15, Number(process.env.MFA_STEP || 30));
+const DEMO_ENGINE_INTERVAL_MS = Math.max(5000, Number(process.env.DEMO_ENGINE_INTERVAL_MS || 15000));
+const DEMO_ENTRY_TOLERANCE_PCT = Math.max(0, Number(process.env.DEMO_ENTRY_TOLERANCE_PCT || 0.2));
+const DEMO_MARKET_SNAPSHOT_LIMIT = Math.max(5, Number(process.env.DEMO_MARKET_SNAPSHOT_LIMIT || 10));
+const DEMO_MIN_BUDGET = Math.max(5, Number(process.env.DEMO_MIN_BUDGET || 10));
 const NOTIFICATION_MAX_RETRIES = Math.max(1, Number(process.env.NOTIFICATION_MAX_RETRIES || 3));
 const RULE_STATE_VERSION = 1;
 const NOTIFICATION_EVENT_TYPES = {
@@ -713,6 +718,73 @@ async function initDb() {
     `);
 
     await conn.query(`
+      CREATE TABLE IF NOT EXISTS demo_rules (
+        id VARCHAR(64) PRIMARY KEY,
+        user_id INT NOT NULL,
+        type VARCHAR(16) NOT NULL,
+        asset_id VARCHAR(128) NOT NULL,
+        asset_symbol VARCHAR(32) NOT NULL,
+        quote_symbol VARCHAR(16) NOT NULL DEFAULT 'USD',
+        entry_price_usd DECIMAL(18,8) NOT NULL,
+        take_profit_pct DECIMAL(18,8) DEFAULT NULL,
+        stop_loss_pct DECIMAL(18,8) DEFAULT NULL,
+        budget_usd DECIMAL(18,8) NOT NULL DEFAULT 0,
+        enabled TINYINT(1) NOT NULL DEFAULT 1,
+        ai_summary TEXT DEFAULT NULL,
+        ai_model VARCHAR(100) DEFAULT NULL,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        CONSTRAINT fk_demo_rules_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        INDEX idx_demo_rules_user (user_id),
+        INDEX idx_demo_rules_asset (asset_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS demo_orders (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        rule_id VARCHAR(64) NOT NULL,
+        user_id INT NOT NULL,
+        side VARCHAR(8) NOT NULL,
+        status VARCHAR(16) NOT NULL,
+        trigger_type VARCHAR(32) DEFAULT NULL,
+        price DECIMAL(18,8) NOT NULL,
+        quantity DECIMAL(18,8) NOT NULL,
+        value_usd DECIMAL(18,8) NOT NULL,
+        market_price_usd DECIMAL(18,8) DEFAULT NULL,
+        linked_trade_id BIGINT DEFAULT NULL,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        CONSTRAINT fk_demo_orders_rule FOREIGN KEY (rule_id) REFERENCES demo_rules(id) ON DELETE CASCADE,
+        CONSTRAINT fk_demo_orders_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        INDEX idx_demo_orders_user (user_id, created_at),
+        INDEX idx_demo_orders_rule (rule_id, linked_trade_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS demo_trades (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        rule_id VARCHAR(64) NOT NULL,
+        user_id INT NOT NULL,
+        entry_order_id BIGINT NOT NULL,
+        exit_order_id BIGINT NOT NULL,
+        entry_price DECIMAL(18,8) NOT NULL,
+        exit_price DECIMAL(18,8) NOT NULL,
+        quantity DECIMAL(18,8) NOT NULL,
+        profit_usd DECIMAL(18,8) NOT NULL,
+        profit_pct DECIMAL(18,8) NOT NULL,
+        reason VARCHAR(32) DEFAULT NULL,
+        created_at BIGINT NOT NULL,
+        CONSTRAINT fk_demo_trades_rule FOREIGN KEY (rule_id) REFERENCES demo_rules(id) ON DELETE CASCADE,
+        CONSTRAINT fk_demo_trades_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_demo_trades_entry FOREIGN KEY (entry_order_id) REFERENCES demo_orders(id) ON DELETE CASCADE,
+        CONSTRAINT fk_demo_trades_exit FOREIGN KEY (exit_order_id) REFERENCES demo_orders(id) ON DELETE CASCADE,
+        INDEX idx_demo_trades_user (user_id, created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await conn.query(`
       CREATE TABLE IF NOT EXISTS rule_state (
         rule_id VARCHAR(64) PRIMARY KEY,
         user_id INT NOT NULL,
@@ -843,6 +915,564 @@ async function initDb() {
   } finally {
     conn.release();
   }
+}
+
+function normaliseAssetSymbol(symbol) {
+  if (typeof symbol !== "string") return "";
+  return symbol.trim().toUpperCase();
+}
+
+function normaliseAssetId(value) {
+  if (typeof value !== "string") return "";
+  return value.trim().toLowerCase();
+}
+
+function mapDemoRuleRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    userId: row.user_id,
+    type: row.type,
+    assetId: row.asset_id,
+    assetSymbol: normaliseAssetSymbol(row.asset_symbol),
+    quoteSymbol: normaliseAssetSymbol(row.quote_symbol || "USD"),
+    entryPriceUSD: row.entry_price_usd !== null ? Number(row.entry_price_usd) : 0,
+    takeProfitPct: row.take_profit_pct !== null ? Number(row.take_profit_pct) : null,
+    stopLossPct: row.stop_loss_pct !== null ? Number(row.stop_loss_pct) : null,
+    budgetUSD: row.budget_usd !== null ? Number(row.budget_usd) : 0,
+    enabled: Boolean(row.enabled),
+    aiSummary: row.ai_summary || null,
+    aiModel: row.ai_model || null,
+    createdAt: row.created_at !== null ? Number(row.created_at) : Date.now(),
+    updatedAt: row.updated_at !== null ? Number(row.updated_at) : Date.now()
+  };
+}
+
+function mapDemoOrderRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    ruleId: row.rule_id,
+    userId: row.user_id,
+    assetId: row.asset_id,
+    assetSymbol: normaliseAssetSymbol(row.asset_symbol),
+    quoteSymbol: normaliseAssetSymbol(row.quote_symbol || "USD"),
+    side: row.side,
+    status: row.status,
+    triggerType: row.trigger_type || null,
+    price: row.price !== null ? Number(row.price) : 0,
+    quantity: row.quantity !== null ? Number(row.quantity) : 0,
+    valueUSD: row.value_usd !== null ? Number(row.value_usd) : 0,
+    marketPriceUSD: row.market_price_usd !== null ? Number(row.market_price_usd) : null,
+    linkedTradeId: row.linked_trade_id !== null ? Number(row.linked_trade_id) : null,
+    createdAt: row.created_at !== null ? Number(row.created_at) : Date.now(),
+    updatedAt: row.updated_at !== null ? Number(row.updated_at) : Date.now()
+  };
+}
+
+function mapDemoTradeRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    ruleId: row.rule_id,
+    userId: row.user_id,
+    assetId: row.asset_id,
+    assetSymbol: normaliseAssetSymbol(row.asset_symbol),
+    quoteSymbol: normaliseAssetSymbol(row.quote_symbol || "USD"),
+    entryOrderId: row.entry_order_id,
+    exitOrderId: row.exit_order_id,
+    entryPrice: row.entry_price !== null ? Number(row.entry_price) : 0,
+    exitPrice: row.exit_price !== null ? Number(row.exit_price) : 0,
+    quantity: row.quantity !== null ? Number(row.quantity) : 0,
+    profitUSD: row.profit_usd !== null ? Number(row.profit_usd) : 0,
+    profitPct: row.profit_pct !== null ? Number(row.profit_pct) : 0,
+    reason: row.reason || null,
+    createdAt: row.created_at !== null ? Number(row.created_at) : Date.now()
+  };
+}
+
+async function listDemoRules(userId, { includePositions = true } = {}) {
+  const [rows] = await pool.query(
+    `SELECT id, user_id, type, asset_id, asset_symbol, quote_symbol, entry_price_usd, take_profit_pct, stop_loss_pct, budget_usd, enabled, ai_summary, ai_model, created_at, updated_at
+     FROM demo_rules
+     WHERE user_id = ?
+     ORDER BY created_at DESC`,
+    [userId]
+  );
+  const rules = rows.map(mapDemoRuleRow);
+  if (!includePositions || !rules.length) {
+    return rules;
+  }
+  const ids = rules.map(rule => rule.id);
+  const [positions] = await pool.query(
+    `SELECT o.id, o.rule_id, o.user_id, o.side, o.status, o.trigger_type, o.price, o.quantity, o.value_usd, o.market_price_usd, o.linked_trade_id, o.created_at, o.updated_at,
+            r.asset_id, r.asset_symbol, r.quote_symbol
+     FROM demo_orders o
+     INNER JOIN demo_rules r ON r.id = o.rule_id
+     WHERE o.user_id = ? AND o.side = 'BUY' AND o.linked_trade_id IS NULL AND o.rule_id IN (?)
+     ORDER BY o.id DESC`,
+    [userId, ids]
+  );
+  const map = new Map();
+  positions.forEach(position => {
+    if (!map.has(position.rule_id)) {
+      map.set(position.rule_id, mapDemoOrderRow(position));
+    }
+  });
+  return rules.map(rule => ({
+    ...rule,
+    openPosition: map.get(rule.id) || null
+  }));
+}
+
+async function getDemoRuleById(userId, ruleId, { includePosition = true } = {}) {
+  if (!ruleId) return null;
+  const [rows] = await pool.query(
+    `SELECT id, user_id, type, asset_id, asset_symbol, quote_symbol, entry_price_usd, take_profit_pct, stop_loss_pct, budget_usd, enabled, ai_summary, ai_model, created_at, updated_at
+     FROM demo_rules
+     WHERE user_id = ? AND id = ?
+     LIMIT 1`,
+    [userId, ruleId]
+  );
+  if (!rows.length) return null;
+  const rule = mapDemoRuleRow(rows[0]);
+  if (!includePosition) return rule;
+  const [positionRows] = await pool.query(
+    `SELECT o.id, o.rule_id, o.user_id, o.side, o.status, o.trigger_type, o.price, o.quantity, o.value_usd, o.market_price_usd, o.linked_trade_id, o.created_at, o.updated_at,
+            r.asset_id, r.asset_symbol, r.quote_symbol
+     FROM demo_orders o
+     INNER JOIN demo_rules r ON r.id = o.rule_id
+     WHERE o.user_id = ? AND o.rule_id = ? AND o.side = 'BUY' AND o.linked_trade_id IS NULL
+     ORDER BY o.id DESC
+     LIMIT 1`,
+    [userId, ruleId]
+  );
+  return {
+    ...rule,
+    openPosition: positionRows.length ? mapDemoOrderRow(positionRows[0]) : null
+  };
+}
+
+async function removeDemoRule(userId, ruleId) {
+  if (!ruleId) return false;
+  const [result] = await pool.query(
+    "DELETE FROM demo_rules WHERE user_id = ? AND id = ?",
+    [userId, ruleId]
+  );
+  return result.affectedRows > 0;
+}
+
+async function createDemoRule(userId, data) {
+  const id = data.id || randomUUID();
+  const now = Date.now();
+  const payload = {
+    id,
+    user_id: userId,
+    type: data.type || "manual",
+    asset_id: normaliseAssetId(data.assetId || data.asset_id),
+    asset_symbol: normaliseAssetSymbol(data.assetSymbol || data.asset_symbol),
+    quote_symbol: normaliseAssetSymbol(data.quoteSymbol || data.quote_symbol || "USD"),
+    entry_price_usd: Number(data.entryPriceUSD ?? data.entry_price_usd ?? 0),
+    take_profit_pct: data.takeProfitPct !== undefined ? Number(data.takeProfitPct) : (data.take_profit_pct !== undefined ? Number(data.take_profit_pct) : null),
+    stop_loss_pct: data.stopLossPct !== undefined ? Number(data.stopLossPct) : (data.stop_loss_pct !== undefined ? Number(data.stop_loss_pct) : null),
+    budget_usd: Number(data.budgetUSD ?? data.budget_usd ?? 0),
+    enabled: data.enabled !== undefined ? (data.enabled ? 1 : 0) : (data.enabled_flag !== undefined ? (data.enabled_flag ? 1 : 0) : 1),
+    ai_summary: data.aiSummary || data.ai_summary || null,
+    ai_model: data.aiModel || data.ai_model || null,
+    created_at: now,
+    updated_at: now
+  };
+  await pool.query(
+    `INSERT INTO demo_rules (id, user_id, type, asset_id, asset_symbol, quote_symbol, entry_price_usd, take_profit_pct, stop_loss_pct, budget_usd, enabled, ai_summary, ai_model, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      payload.id,
+      payload.user_id,
+      payload.type,
+      payload.asset_id,
+      payload.asset_symbol,
+      payload.quote_symbol,
+      payload.entry_price_usd,
+      payload.take_profit_pct,
+      payload.stop_loss_pct,
+      payload.budget_usd,
+      payload.enabled,
+      payload.ai_summary,
+      payload.ai_model,
+      payload.created_at,
+      payload.updated_at
+    ]
+  );
+  return getDemoRuleById(userId, id, { includePosition: true });
+}
+
+async function listDemoOrders(userId, { limit = 50 } = {}) {
+  const size = Math.max(1, Math.min(200, Number(limit) || 50));
+  const [rows] = await pool.query(
+    `SELECT o.id, o.rule_id, o.user_id, o.side, o.status, o.trigger_type, o.price, o.quantity, o.value_usd, o.market_price_usd, o.linked_trade_id, o.created_at, o.updated_at,
+            r.asset_id, r.asset_symbol, r.quote_symbol
+     FROM demo_orders o
+     INNER JOIN demo_rules r ON r.id = o.rule_id
+     WHERE o.user_id = ?
+     ORDER BY o.id DESC
+     LIMIT ?`,
+    [userId, size]
+  );
+  return rows.map(mapDemoOrderRow);
+}
+
+async function listDemoTrades(userId, { limit = 50 } = {}) {
+  const size = Math.max(1, Math.min(200, Number(limit) || 50));
+  const [rows] = await pool.query(
+    `SELECT t.id, t.rule_id, t.user_id, t.entry_order_id, t.exit_order_id, t.entry_price, t.exit_price, t.quantity, t.profit_usd, t.profit_pct, t.reason, t.created_at,
+            r.asset_id, r.asset_symbol, r.quote_symbol
+     FROM demo_trades t
+     INNER JOIN demo_rules r ON r.id = t.rule_id
+     WHERE t.user_id = ?
+     ORDER BY t.id DESC
+     LIMIT ?`,
+    [userId, size]
+  );
+  return rows.map(mapDemoTradeRow);
+}
+
+async function getOpenDemoEntry(ruleId, userId) {
+  const [rows] = await pool.query(
+    `SELECT o.id, o.rule_id, o.user_id, o.side, o.status, o.trigger_type, o.price, o.quantity, o.value_usd, o.market_price_usd, o.linked_trade_id, o.created_at, o.updated_at,
+            r.asset_id, r.asset_symbol, r.quote_symbol
+     FROM demo_orders o
+     INNER JOIN demo_rules r ON r.id = o.rule_id
+     WHERE o.rule_id = ? AND o.user_id = ? AND o.side = 'BUY' AND o.linked_trade_id IS NULL
+     ORDER BY o.id DESC
+     LIMIT 1`,
+    [ruleId, userId]
+  );
+  return rows.length ? mapDemoOrderRow(rows[0]) : null;
+}
+
+async function linkOrdersToTrade(tradeId, orderIds) {
+  if (!tradeId || !Array.isArray(orderIds) || !orderIds.length) return;
+  const now = Date.now();
+  await pool.query(
+    `UPDATE demo_orders SET linked_trade_id = ?, updated_at = ? WHERE id IN (?)`,
+    [tradeId, now, orderIds]
+  );
+}
+
+async function insertDemoOrder({
+  ruleId,
+  userId,
+  side,
+  status = "filled",
+  triggerType = null,
+  price,
+  quantity,
+  valueUSD,
+  marketPriceUSD = null
+}) {
+  const now = Date.now();
+  const [result] = await pool.query(
+    `INSERT INTO demo_orders (rule_id, user_id, side, status, trigger_type, price, quantity, value_usd, market_price_usd, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      ruleId,
+      userId,
+      side,
+      status,
+      triggerType,
+      price,
+      quantity,
+      valueUSD,
+      marketPriceUSD,
+      now,
+      now
+    ]
+  );
+  const orderId = result.insertId;
+  const [rows] = await pool.query(
+    `SELECT o.id, o.rule_id, o.user_id, o.side, o.status, o.trigger_type, o.price, o.quantity, o.value_usd, o.market_price_usd, o.linked_trade_id, o.created_at, o.updated_at,
+            r.asset_id, r.asset_symbol, r.quote_symbol
+     FROM demo_orders o
+     INNER JOIN demo_rules r ON r.id = o.rule_id
+     WHERE o.id = ?
+     LIMIT 1`,
+    [orderId]
+  );
+  return rows.length ? mapDemoOrderRow(rows[0]) : null;
+}
+
+async function insertDemoTrade({
+  ruleId,
+  userId,
+  entryOrderId,
+  exitOrderId,
+  entryPrice,
+  exitPrice,
+  quantity,
+  profitUSD,
+  profitPct,
+  reason = null
+}) {
+  const now = Date.now();
+  const [result] = await pool.query(
+    `INSERT INTO demo_trades (rule_id, user_id, entry_order_id, exit_order_id, entry_price, exit_price, quantity, profit_usd, profit_pct, reason, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      ruleId,
+      userId,
+      entryOrderId,
+      exitOrderId,
+      entryPrice,
+      exitPrice,
+      quantity,
+      profitUSD,
+      profitPct,
+      reason,
+      now
+    ]
+  );
+  const tradeId = result.insertId;
+  await linkOrdersToTrade(tradeId, [entryOrderId, exitOrderId]);
+  const [rows] = await pool.query(
+    `SELECT t.id, t.rule_id, t.user_id, t.entry_order_id, t.exit_order_id, t.entry_price, t.exit_price, t.quantity, t.profit_usd, t.profit_pct, t.reason, t.created_at,
+            r.asset_id, r.asset_symbol, r.quote_symbol
+     FROM demo_trades t
+     INNER JOIN demo_rules r ON r.id = t.rule_id
+     WHERE t.id = ?
+     LIMIT 1`,
+    [tradeId]
+  );
+  return rows.length ? mapDemoTradeRow(rows[0]) : null;
+}
+
+function prepareDemoRulePayload(input = {}) {
+  const assetId = normaliseAssetId(input.assetId || input.asset_id);
+  const assetSymbol = normaliseAssetSymbol(input.assetSymbol || input.asset_symbol);
+  const entryPrice = Number(input.entryPriceUSD ?? input.entry_price_usd);
+  const takeProfit = input.takeProfitPct !== undefined ? Number(input.takeProfitPct) : (input.take_profit_pct !== undefined ? Number(input.take_profit_pct) : null);
+  const stopLoss = input.stopLossPct !== undefined ? Number(input.stopLossPct) : (input.stop_loss_pct !== undefined ? Number(input.stop_loss_pct) : null);
+  const budget = Number(input.budgetUSD ?? input.budget_usd);
+  const enabled = input.enabled !== undefined ? Boolean(input.enabled) : input.enabled_flag !== undefined ? Boolean(input.enabled_flag) : true;
+  return {
+    assetId,
+    assetSymbol,
+    entryPriceUSD: Number.isFinite(entryPrice) ? entryPrice : NaN,
+    takeProfitPct: takeProfit !== null && takeProfit !== undefined && Number.isFinite(takeProfit) ? takeProfit : null,
+    stopLossPct: stopLoss !== null && stopLoss !== undefined && Number.isFinite(stopLoss) ? stopLoss : null,
+    budgetUSD: Number.isFinite(budget) ? budget : NaN,
+    enabled
+  };
+}
+
+function validateDemoRulePayload(input = {}) {
+  const sanitized = prepareDemoRulePayload(input);
+  const errors = [];
+  if (!sanitized.assetId) {
+    errors.push("assetId is required");
+  }
+  if (!sanitized.assetSymbol) {
+    errors.push("assetSymbol is required");
+  }
+  if (!(sanitized.entryPriceUSD > 0)) {
+    errors.push("entryPriceUSD must be a positive number");
+  }
+  if (!(sanitized.budgetUSD > 0)) {
+    errors.push("budgetUSD must be a positive number");
+  } else if (sanitized.budgetUSD < DEMO_MIN_BUDGET) {
+    errors.push(`budgetUSD must be at least ${DEMO_MIN_BUDGET}`);
+  }
+  if (!(sanitized.takeProfitPct > 0) && !(sanitized.stopLossPct > 0)) {
+    errors.push("You must provide at least one of takeProfitPct or stopLossPct greater than zero");
+  }
+  return {
+    ok: errors.length === 0,
+    errors,
+    payload: sanitized
+  };
+}
+
+function parseDemoAiRuleResponse(text) {
+  if (!text || typeof text !== "string") {
+    throw new Error("AI response was empty");
+  }
+  let cleaned = text.trim();
+  if (!cleaned) {
+    throw new Error("AI response was empty");
+  }
+  cleaned = cleaned.replace(/^```json\s*/i, "").replace(/```$/i, "");
+  let parsed;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (err) {
+    throw new Error("AI response was not valid JSON");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("AI response did not contain the expected object");
+  }
+  const assetId = normaliseAssetId(parsed.assetId || parsed.id || parsed.asset_id || parsed.coinId);
+  const assetSymbol = normaliseAssetSymbol(parsed.assetSymbol || parsed.symbol || parsed.ticker);
+  const entryPriceUSD = Number(parsed.entryPriceUSD ?? parsed.entry_price_usd ?? parsed.entryPrice);
+  const takeProfitPct = parsed.takeProfitPct !== undefined ? Number(parsed.takeProfitPct) : (parsed.take_profit_pct !== undefined ? Number(parsed.take_profit_pct) : null);
+  const stopLossPct = parsed.stopLossPct !== undefined ? Number(parsed.stopLossPct) : (parsed.stop_loss_pct !== undefined ? Number(parsed.stop_loss_pct) : null);
+  const summary = typeof parsed.summary === "string" ? parsed.summary.trim() : "";
+  return {
+    assetId,
+    assetSymbol,
+    entryPriceUSD,
+    takeProfitPct: Number.isFinite(takeProfitPct) ? takeProfitPct : null,
+    stopLossPct: Number.isFinite(stopLossPct) ? stopLossPct : null,
+    summary
+  };
+}
+
+async function processDemoRuleForPrice(ruleRow, marketPrice) {
+  const rule = mapDemoRuleRow(ruleRow);
+  if (!rule || !rule.enabled) return;
+  const price = Number(marketPrice);
+  if (!(price > 0)) return;
+
+  const toleranceMultiplier = 1 + (DEMO_ENTRY_TOLERANCE_PCT / 100);
+  const entryThreshold = rule.entryPriceUSD * toleranceMultiplier;
+  const openEntry = await getOpenDemoEntry(rule.id, rule.userId);
+
+  if (!openEntry) {
+    if (!(rule.entryPriceUSD > 0) || !(rule.budgetUSD > 0)) return;
+    if (price > entryThreshold) return;
+    const fillPrice = roundNumber(Math.min(rule.entryPriceUSD, price), 6) || rule.entryPriceUSD;
+    if (!(fillPrice > 0)) return;
+    const quantity = roundNumber(rule.budgetUSD / fillPrice, 8);
+    if (!(quantity > 0)) return;
+    const valueUSD = roundNumber(quantity * fillPrice, 6);
+    await insertDemoOrder({
+      ruleId: rule.id,
+      userId: rule.userId,
+      side: "BUY",
+      triggerType: "entry",
+      price: fillPrice,
+      quantity,
+      valueUSD,
+      marketPriceUSD: price
+    });
+    return;
+  }
+
+  const quantity = Number(openEntry.quantity);
+  if (!(quantity > 0)) return;
+  const entryPrice = Number(openEntry.price) || rule.entryPriceUSD || 0;
+  if (!(entryPrice > 0)) return;
+  const entryValue = Number(openEntry.valueUSD) || entryPrice * quantity;
+
+  const takeProfitPct = rule.takeProfitPct !== null ? Number(rule.takeProfitPct) : null;
+  const stopLossPct = rule.stopLossPct !== null ? Number(rule.stopLossPct) : null;
+
+  let exitTrigger = null;
+  let targetPrice = null;
+  if (takeProfitPct !== null && Number.isFinite(takeProfitPct) && takeProfitPct > 0) {
+    const target = entryPrice * (1 + takeProfitPct / 100);
+    if (price >= target) {
+      exitTrigger = "take_profit";
+      targetPrice = target;
+    }
+  }
+  if (!exitTrigger && stopLossPct !== null && Number.isFinite(stopLossPct) && stopLossPct > 0) {
+    const target = entryPrice * (1 - stopLossPct / 100);
+    if (price <= target) {
+      exitTrigger = "stop_loss";
+      targetPrice = target;
+    }
+  }
+
+  if (!exitTrigger || !(targetPrice > 0)) {
+    return;
+  }
+
+  const exitPrice = roundNumber(
+    exitTrigger === "take_profit"
+      ? Math.max(price, targetPrice)
+      : Math.min(price, targetPrice),
+    6
+  );
+  const valueUSD = roundNumber(quantity * exitPrice, 6);
+  const profitUSD = roundNumber(valueUSD - entryValue, 6);
+  const profitPct = roundNumber(entryPrice > 0 ? ((exitPrice - entryPrice) / entryPrice) * 100 : 0, 4);
+
+  const sellOrder = await insertDemoOrder({
+    ruleId: rule.id,
+    userId: rule.userId,
+    side: "SELL",
+    triggerType: exitTrigger,
+    price: exitPrice,
+    quantity,
+    valueUSD,
+    marketPriceUSD: price
+  });
+  if (!sellOrder) return;
+
+  await insertDemoTrade({
+    ruleId: rule.id,
+    userId: rule.userId,
+    entryOrderId: openEntry.id,
+    exitOrderId: sellOrder.id,
+    entryPrice,
+    exitPrice,
+    quantity,
+    profitUSD,
+    profitPct,
+    reason: exitTrigger
+  });
+}
+
+let demoEngineTimer = null;
+let demoEngineBusy = false;
+
+async function runDemoEngineOnce() {
+  if (demoEngineBusy) return;
+  demoEngineBusy = true;
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, user_id, type, asset_id, asset_symbol, quote_symbol, entry_price_usd, take_profit_pct, stop_loss_pct, budget_usd, enabled, ai_summary, ai_model, created_at, updated_at
+       FROM demo_rules
+       WHERE enabled = 1`
+    );
+    if (!Array.isArray(rows) || !rows.length) {
+      return;
+    }
+    const priceCache = new Map();
+    for (const row of rows) {
+      const assetId = normaliseAssetId(row.asset_id);
+      if (!assetId) continue;
+      let price = priceCache.get(assetId);
+      if (price === undefined) {
+        try {
+          price = await fetchCoinPriceUSD(assetId);
+        } catch (err) {
+          price = null;
+        }
+        priceCache.set(assetId, price);
+      }
+      if (!(price > 0)) continue;
+      try {
+        await processDemoRuleForPrice(row, price);
+      } catch (err) {
+        console.error(`[DEMO] failed to process rule ${row.id}`, err?.message || err);
+      }
+    }
+  } catch (err) {
+    console.error("[DEMO] engine tick error", err);
+  } finally {
+    demoEngineBusy = false;
+  }
+}
+
+function startDemoEngine() {
+  if (DEMO_ENGINE_INTERVAL_MS <= 0) return;
+  const run = () => {
+    runDemoEngineOnce().catch(err => {
+      console.error("[DEMO] engine loop failure", err);
+    });
+  };
+  run();
+  demoEngineTimer = setInterval(run, DEMO_ENGINE_INTERVAL_MS);
 }
 
 async function findUserByEmail(email) {
@@ -2244,6 +2874,170 @@ app.delete("/api/users/api-keys", authRequired(handleAsync(async (req, res) => {
   res.json({ ok: true });
 })));
 
+app.get("/api/demo/rules", authRequired(handleAsync(async (req, res) => {
+  const rules = await listDemoRules(req.user.id, { includePositions: true });
+  res.json({ rules });
+})));
+
+app.post("/api/demo/rules/manual", authRequired(handleAsync(async (req, res) => {
+  const validation = validateDemoRulePayload(req.body || {});
+  if (!validation.ok) {
+    return res.status(400).json({ error: validation.errors.join(", ") });
+  }
+  const payload = validation.payload;
+  const rule = await createDemoRule(req.user.id, {
+    ...payload,
+    type: "manual",
+    entryPriceUSD: roundNumber(payload.entryPriceUSD, 6),
+    takeProfitPct: payload.takeProfitPct !== null ? roundNumber(payload.takeProfitPct, 4) : null,
+    stopLossPct: payload.stopLossPct !== null ? roundNumber(payload.stopLossPct, 4) : null,
+    budgetUSD: roundNumber(payload.budgetUSD, 2)
+  });
+  res.json({ ok: true, rule });
+})));
+
+app.post("/api/demo/rules/ai", authRequired(handleAsync(async (req, res) => {
+  const key = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY;
+  if (!key) {
+    return res.status(400).json({ error: "OPENAI_API_KEY is required" });
+  }
+  const model = typeof req.body?.model === "string" && req.body.model.trim() ? req.body.model.trim() : DEFAULT_AI_MODEL;
+  const locale = typeof req.body?.locale === "string" ? req.body.locale.toLowerCase() : "en";
+  const summaryLanguage = locale === "ar" ? "Arabic" : "English";
+  const requestedBudget = Number(req.body?.budgetUSD ?? req.body?.budget_usd ?? DEFAULT_AI_BUDGET);
+  if (!(requestedBudget > 0)) {
+    return res.status(400).json({ error: "budgetUSD must be a positive number" });
+  }
+  if (requestedBudget < DEMO_MIN_BUDGET) {
+    return res.status(400).json({ error: `budgetUSD must be at least ${DEMO_MIN_BUDGET}` });
+  }
+
+  const marketSnapshot = await fetchCoinMarketSnapshot(DEMO_MARKET_SNAPSHOT_LIMIT);
+  if (!marketSnapshot.length) {
+    return res.status(503).json({ error: "Failed to load market snapshot from CoinGecko" });
+  }
+
+  const aiInput = {
+    budgetUSD: roundNumber(requestedBudget, 2),
+    marketSnapshot,
+    summaryLanguage
+  };
+  const prompt = [
+    "You are simulating a paper trading setup using CoinGecko USD spot prices.",
+    "Choose one asset from the provided snapshot array and design a single trade.",
+    "Return ONLY minified JSON using this schema: {\"assetId\":\"coingecko-id\",\"assetSymbol\":\"SYMBOL\",\"entryPriceUSD\":number,\"takeProfitPct\":number,\"stopLossPct\":number,\"summary\":\"...\"}.",
+    "Requirements:",
+    "1. entryPriceUSD must be within 1% below or above the current price and represent a realistic limit order.",
+    "2. takeProfitPct must be between 0.5 and 5.",
+    "3. stopLossPct must be between 0.5 and 5.",
+    `4. Write the summary in ${summaryLanguage} and reference concrete metrics from the snapshot.`,
+    "SNAPSHOT:",
+    JSON.stringify(marketSnapshot, null, 2),
+    `BUDGET: ${roundNumber(requestedBudget, 2)} USD`
+  ].join("\n");
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${key}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.2,
+      messages: [
+        {
+          role: "system",
+          content: "You are an expert crypto analyst building educational demo trades. Think through the data silently then respond only with the requested JSON."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
+    })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    return res.status(502).json({ error: `OpenAI API error: ${errText}` });
+  }
+
+  const payload = await response.json();
+  const text = payload?.choices?.[0]?.message?.content || "";
+  let parsed;
+  try {
+    parsed = parseDemoAiRuleResponse(text);
+  } catch (err) {
+    return res.status(502).json({ error: err?.message || "Failed to parse AI response" });
+  }
+
+  const validation = validateDemoRulePayload({
+    ...parsed,
+    budgetUSD: requestedBudget
+  });
+  if (!validation.ok) {
+    return res.status(400).json({ error: validation.errors.join(", ") });
+  }
+
+  const payloadRule = validation.payload;
+  let aiSummary = parsed.summary || null;
+  if (aiSummary && aiSummary.length > 1000) {
+    aiSummary = aiSummary.slice(0, 1000);
+  }
+
+  let rule;
+  try {
+    rule = await createDemoRule(req.user.id, {
+      ...payloadRule,
+      type: "ai",
+      aiSummary,
+      aiModel: model,
+      entryPriceUSD: roundNumber(payloadRule.entryPriceUSD, 6),
+      takeProfitPct: payloadRule.takeProfitPct !== null ? roundNumber(payloadRule.takeProfitPct, 4) : null,
+      stopLossPct: payloadRule.stopLossPct !== null ? roundNumber(payloadRule.stopLossPct, 4) : null,
+      budgetUSD: roundNumber(payloadRule.budgetUSD, 2)
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err?.message || "Failed to save AI rule" });
+  }
+
+  try {
+    await recordAiFeedback({
+      userId: req.user.id,
+      model,
+      prompt: aiInput,
+      response: { parsed, raw: text, openai: payload }
+    });
+  } catch (err) {
+    console.error("Failed to record AI feedback for demo rule", err);
+  }
+
+  res.json({ ok: true, rule });
+})));
+
+app.delete("/api/demo/rules/:id", authRequired(handleAsync(async (req, res) => {
+  const id = req.params.id;
+  if (!id) {
+    return res.status(400).json({ error: "id is required" });
+  }
+  await removeDemoRule(req.user.id, id);
+  const rules = await listDemoRules(req.user.id, { includePositions: true });
+  res.json({ ok: true, rules });
+})));
+
+app.get("/api/demo/orders", authRequired(handleAsync(async (req, res) => {
+  const limit = req.query?.limit;
+  const orders = await listDemoOrders(req.user.id, { limit });
+  res.json({ orders });
+})));
+
+app.get("/api/demo/trades", authRequired(handleAsync(async (req, res) => {
+  const limit = req.query?.limit;
+  const trades = await listDemoTrades(req.user.id, { limit });
+  res.json({ trades });
+})));
+
 app.get("/api/rules", authRequired(handleAsync(async (req, res) => {
   const { rules, entitlements } = await readRules(req.user.id, { withEntitlements: true });
   res.json({ rules, entitlements });
@@ -3222,6 +4016,7 @@ async function bootstrap() {
     }
   });
   engineManager.start();
+  startDemoEngine();
 }
 
 bootstrap().catch(err => {
