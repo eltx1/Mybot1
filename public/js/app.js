@@ -5,7 +5,8 @@
         header: {
           taglineTitle: "Smart crypto autopilot",
           taglineSubtitle: "Designed for modern spot traders.",
-          cta: "Explore dashboard"
+          cta: "Explore dashboard",
+          demoCta: "Back to real account"
         },
         hero: {
           title: "Trade smarter with AI-assisted automation",
@@ -52,6 +53,10 @@
           subtitle: "Manage AI ideas, monitor open orders, and keep your Binance link under supervision.",
           welcome: "Welcome",
           logout: "Sign out"
+        },
+        accounts: {
+          real: "Real account",
+          demo: "Demo account"
         },
         api: {
           title: "Connect Binance keys",
@@ -255,7 +260,8 @@
         header: {
           taglineTitle: "طيار آلي ذكي للعملات الرقمية",
           taglineSubtitle: "مصمم لمتداولي السبوت العصريين.",
-          cta: "استكشف اللوحة"
+          cta: "استكشف اللوحة",
+          demoCta: "العودة للحساب الحقيقي"
         },
         hero: {
           title: "تداول بذكاء مع أتمتة مدعومة بالذكاء الاصطناعي",
@@ -302,6 +308,10 @@
           subtitle: "أدر أفكار الذكاء الاصطناعي، راقب الأوامر المفتوحة، وأشرف على ربط Binance.",
           welcome: "مرحبًا",
           logout: "تسجيل الخروج"
+        },
+        accounts: {
+          real: "الحساب الحقيقي",
+          demo: "الحساب التجريبي"
         },
         api: {
           title: "ربط مفاتيح Binance",
@@ -598,6 +608,8 @@
     const mfaTokenInput = document.getElementById('mfaTokenInput');
     const loginMfaRow = document.getElementById('loginMfaRow');
     const loginMfaInput = document.getElementById('loginMfa');
+    const accountRealBtn = document.getElementById('accountRealBtn');
+    const accountDemoBtn = document.getElementById('accountDemoBtn');
 
     function resolveTranslation(lang, key) {
       const fallback = translations.en;
@@ -2297,6 +2309,27 @@
     if (confirmMfaBtn) confirmMfaBtn.addEventListener('click', confirmMfaAction);
     refreshOrdersBtn.addEventListener('click', () => loadOrders());
     refreshCompletedBtn.addEventListener('click', () => loadCompletedTrades());
+    if (accountRealBtn) {
+      accountRealBtn.addEventListener('click', () => {
+        accountRealBtn.classList.add('is-active');
+        accountRealBtn.setAttribute('aria-pressed', 'true');
+        if (accountDemoBtn) {
+          accountDemoBtn.classList.remove('is-active');
+          accountDemoBtn.setAttribute('aria-pressed', 'false');
+        }
+      });
+    }
+    if (accountDemoBtn) {
+      accountDemoBtn.addEventListener('click', () => {
+        accountDemoBtn.classList.add('is-active');
+        accountDemoBtn.setAttribute('aria-pressed', 'true');
+        if (accountRealBtn) {
+          accountRealBtn.classList.remove('is-active');
+          accountRealBtn.setAttribute('aria-pressed', 'false');
+        }
+        window.location.href = '/demo.html';
+      });
+    }
     languageToggle.addEventListener('click', () => {
       setLanguage(state.language === 'ar' ? 'en' : 'ar');
     });
