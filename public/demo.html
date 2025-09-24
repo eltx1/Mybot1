@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MY1 Demo Trading</title>
+  <link rel="stylesheet" href="/styles/main.css">
+</head>
+<body>
+  <div class="site">
+    <header class="site-header">
+      <div class="container">
+        <div class="brand">
+          <span class="logo">MY1</span>
+          <div class="tagline">
+            <strong data-i18n="header.taglineTitle">Smart crypto autopilot</strong>
+            <span data-i18n="header.taglineSubtitle">Designed for modern spot traders.</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button id="languageToggle" class="language-toggle" type="button">عربي</button>
+          <a class="ghost-link" href="/" data-i18n="header.demoCta">Back to real account</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="demoDashboard">
+      <div class="dashboard-header">
+        <div>
+          <h1 data-i18n="demo.title">Demo trading cockpit</h1>
+          <p class="muted" data-i18n="demo.subtitle">Preview manual and AI strategies with simulated balances. Everything here runs in training mode.</p>
+        </div>
+      </div>
+
+      <div class="account-switcher" id="accountSwitcher" role="tablist" aria-label="Account mode">
+        <button class="account-switcher__btn" id="accountRealBtn" type="button" data-i18n="accounts.real" aria-pressed="false">Real account</button>
+        <button class="account-switcher__btn is-active" id="accountDemoBtn" type="button" data-i18n="accounts.demo" aria-pressed="true">Demo account</button>
+      </div>
+
+      <article class="card demo-intro">
+        <h2 data-i18n="demo.infoTitle">What is demo mode?</h2>
+        <p data-i18n="demo.infoBody">Use the demo workspace to explore how MY1 behaves without connecting your exchange.</p>
+        <ul class="demo-intro__list">
+          <li data-i18n="demo.infoPoint1">No subscription is required — demo mode is unlocked for every user.</li>
+          <li data-i18n="demo.infoPoint2">Binance keys are not needed; the simulator uses built-in market data.</li>
+          <li data-i18n="demo.infoPoint3">Future updates will let you practice managing rules before going live.</li>
+        </ul>
+      </article>
+
+      <section class="dashboard-grid demo-grid">
+        <article class="card demo-card">
+          <div class="demo-card__header">
+            <span class="pill" data-i18n="demo.badge">Preloaded</span>
+            <h2 data-i18n="demo.manualTitle">Manual rules (demo)</h2>
+          </div>
+          <p data-i18n="demo.manualSubtitle">Test dip-buying and take-profit ideas with simulated capital.</p>
+          <div class="demo-placeholder" data-i18n="demo.manualPlaceholder">Demo manual rules will appear here soon.</div>
+        </article>
+
+        <article class="card demo-card">
+          <div class="demo-card__header">
+            <span class="pill" data-i18n="demo.badge">Preloaded</span>
+            <h2 data-i18n="demo.aiTitle">AI rules (demo)</h2>
+          </div>
+          <p data-i18n="demo.aiSubtitle">Preview AI-generated strategies in a safe sandbox.</p>
+          <div class="demo-placeholder" data-i18n="demo.aiPlaceholder">Demo AI rules will appear here soon.</div>
+        </article>
+
+        <article class="card demo-card">
+          <div class="demo-card__header">
+            <span class="pill" data-i18n="demo.badge">Preloaded</span>
+            <h2 data-i18n="demo.ordersTitle">Open orders (demo)</h2>
+          </div>
+          <p data-i18n="demo.ordersSubtitle">Track how demo orders would execute without risking funds.</p>
+          <div class="demo-placeholder" data-i18n="demo.ordersPlaceholder">Demo open orders will appear here soon.</div>
+        </article>
+
+        <article class="card demo-card">
+          <div class="demo-card__header">
+            <span class="pill" data-i18n="demo.badge">Preloaded</span>
+            <h2 data-i18n="demo.completedTitle">Completed trades (demo)</h2>
+          </div>
+          <p data-i18n="demo.completedSubtitle">Review the outcome of simulated trades once they close.</p>
+          <div class="demo-placeholder" data-i18n="demo.completedPlaceholder">Demo completed trades will appear here soon.</div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/js/demo.js"></script>
+</body>
+</html>
