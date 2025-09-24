@@ -5,6 +5,7 @@ const DEFAULT_RETRY_ATTEMPTS = Math.max(1, Number(process.env.BINANCE_RETRY_ATTE
 const RETRY_BACKOFF_BASE = Math.max(50, Number(process.env.BINANCE_RETRY_BACKOFF || 200));
 const AVG_PRICE_TTL = Math.max(1000, Number(process.env.BINANCE_AVG_PRICE_TTL || 5000));
 const EXCHANGE_INFO_TTL = Math.max(60000, Number(process.env.BINANCE_EXCHANGE_INFO_TTL || 300000));
+const TIME_SYNC_TTL = Math.max(30000, Number(process.env.BINANCE_TIME_SYNC_MS || 60000));
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -51,6 +52,9 @@ export function createBinanceClient(options = {}) {
 
   let apiKey = providedKey;
   let apiSecret = providedSecret;
+  let timeOffset = 0;
+  let lastTimeSync = 0;
+  let syncingPromise = null;
 
   const caches = {
     avgPrice: new Map(),
@@ -70,6 +74,56 @@ export function createBinanceClient(options = {}) {
     map.set(key, { value, expiresAt: Date.now() + ttl });
   }
 
+  async function fetchServerTime() {
+    const response = await fetchWithRetry(`${base}/api/v3/time`, { method: "GET" });
+    const text = await response.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { serverTime: Date.now() };
+    }
+  }
+
+  async function syncTime(force = false) {
+    const now = Date.now();
+    if (!force && (now - lastTimeSync) < TIME_SYNC_TTL && !syncingPromise) {
+      return;
+    }
+    if (syncingPromise) {
+      return syncingPromise;
+    }
+    syncingPromise = (async () => {
+      try {
+        const result = await fetchServerTime();
+        if (result && Number(result.serverTime)) {
+          const serverTime = Number(result.serverTime);
+          const localNow = Date.now();
+          timeOffset = serverTime - localNow;
+          lastTimeSync = localNow;
+        }
+      } catch (err) {
+        console.error("[BINANCE] failed to sync time", err?.message || err);
+      } finally {
+        syncingPromise = null;
+      }
+    })();
+    return syncingPromise;
+  }
+
+  function parseErrorPayload(err) {
+    if (!err) return { code: undefined, message: "" };
+    let message = typeof err.message === "string" ? err.message : String(err);
+    let code;
+    try {
+      const payload = JSON.parse(message);
+      if (payload && typeof payload === "object") {
+        if (payload.msg) message = String(payload.msg);
+        if (payload.code !== undefined) code = Number(payload.code);
+      }
+    } catch {}
+    return { code, message };
+  }
+
   function ensureCreds() {
     if (!apiKey || !apiSecret) {
       throw new Error("This operation requires a Binance API key and secret");
@@ -81,7 +135,7 @@ export function createBinanceClient(options = {}) {
     return crypto.createHmac("sha256", apiSecret).update(queryString).digest("hex");
   }
 
-  async function request(path, method = "GET", params = {}, signed = false) {
+  async function request(path, method = "GET", params = {}, signed = false, attempt = 0) {
     const searchParams = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
       if (value !== undefined && value !== null) {
@@ -95,38 +149,52 @@ export function createBinanceClient(options = {}) {
 
     if (apiKey) headers["X-MBX-APIKEY"] = apiKey;
 
+    const appendSignature = async () => {
+      ensureCreds();
+      await syncTime(attempt > 0);
+      const timestamp = Math.floor(Date.now() + timeOffset);
+      searchParams.set("timestamp", timestamp.toString());
+      searchParams.set("recvWindow", "5000");
+      const qs = searchParams.toString();
+      const signature = sign(qs);
+      if (method === "GET") {
+        url = `${url}?${qs}&signature=${signature}`;
+      } else {
+        body = `${qs}&signature=${signature}`;
+      }
+    };
+
     if (method === "GET") {
       if (signed) {
-        ensureCreds();
-        searchParams.set("timestamp", Date.now().toString());
-        searchParams.set("recvWindow", "5000");
-        const qs = searchParams.toString();
-        const signature = sign(qs);
-        url = `${url}?${qs}&signature=${signature}`;
+        await appendSignature();
       } else if ([...searchParams].length) {
         const qs = searchParams.toString();
         url = `${url}?${qs}`;
       }
     } else {
       if (signed) {
-        ensureCreds();
-        searchParams.set("timestamp", Date.now().toString());
-        searchParams.set("recvWindow", "5000");
-        const qs = searchParams.toString();
-        const signature = sign(qs);
-        body = `${qs}&signature=${signature}`;
+        await appendSignature();
       } else {
         body = searchParams.toString();
       }
       headers["Content-Type"] = "application/x-www-form-urlencoded";
     }
 
-    const response = await fetchWithRetry(url, { method, headers, body });
-    const text = await response.text();
     try {
-      return JSON.parse(text);
-    } catch {
-      return text;
+      const response = await fetchWithRetry(url, { method, headers, body });
+      const text = await response.text();
+      try {
+        return JSON.parse(text);
+      } catch {
+        return text;
+      }
+    } catch (err) {
+      const details = parseErrorPayload(err);
+      if (signed && details.code === -1021 && attempt < 2) {
+        await syncTime(true);
+        return request(path, method, params, signed, attempt + 1);
+      }
+      throw err;
     }
   }
 
@@ -186,6 +254,19 @@ export function createBinanceClient(options = {}) {
       };
       if (!makerOnly) payload.timeInForce = "GTC";
       if (clientOrderId) payload.newClientOrderId = clientOrderId;
+      return request(`/api/v3/order`, "POST", payload, true);
+    },
+    placeStopLossLimit(symbol, side, qty, stopPrice, limitPrice, options = {}) {
+      const payload = {
+        symbol,
+        side,
+        type: "STOP_LOSS_LIMIT",
+        quantity: qty,
+        price: limitPrice,
+        stopPrice,
+        timeInForce: "GTC"
+      };
+      if (options?.clientOrderId) payload.newClientOrderId = options.clientOrderId;
       return request(`/api/v3/order`, "POST", payload, true);
     },
     cancelOrder(symbol, orderId) {

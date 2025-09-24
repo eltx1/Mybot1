@@ -80,6 +80,10 @@
               <label for="loginPassword" data-i18n="auth.passwordLabel">Password</label>
               <input id="loginPassword" type="password" autocomplete="current-password" required data-i18n-placeholder="auth.passwordPlaceholder">
             </div>
+            <div id="loginMfaRow" class="hidden">
+              <label for="loginMfa" data-i18n="auth.mfaLabel">Authenticator code</label>
+              <input id="loginMfa" maxlength="6" inputmode="numeric" autocomplete="one-time-code" data-i18n-placeholder="auth.mfaPlaceholder" placeholder="123456">
+            </div>
             <button class="btn primary" type="submit" data-i18n="auth.loginCta">Sign in</button>
           </form>
           <form id="registerForm" data-auth-panel="register" class="hidden">
@@ -159,6 +163,53 @@
           </form>
         </article>
 
+        <article class="card" id="securityCard">
+          <h2 data-i18n="security.title">Security center</h2>
+          <p data-i18n="security.description">Manage login protection and instant alerts for rule activity.</p>
+          <form id="alertSettingsForm">
+            <div class="form-row">
+              <div>
+                <label for="alertEmail" data-i18n="security.alertEmailLabel">Alert email</label>
+                <input id="alertEmail" type="email" autocomplete="off" data-i18n-placeholder="security.alertEmailPlaceholder">
+              </div>
+              <div>
+                <label for="alertWebhook" data-i18n="security.alertWebhookLabel">Webhook URL</label>
+                <input id="alertWebhook" autocomplete="off" data-i18n-placeholder="security.alertWebhookPlaceholder">
+              </div>
+            </div>
+            <div class="form-row">
+              <div>
+                <label for="alertTelegram" data-i18n="security.alertTelegramLabel">Telegram chat ID</label>
+                <input id="alertTelegram" autocomplete="off" data-i18n-placeholder="security.alertTelegramPlaceholder">
+              </div>
+            </div>
+            <div class="actions">
+              <button class="btn primary" type="submit" data-i18n="security.saveAlerts">Save alert channels</button>
+            </div>
+          </form>
+          <div class="mfa-box">
+            <div class="mfa-header">
+              <div>
+                <h3 data-i18n="security.mfaTitle">Multi-factor authentication</h3>
+                <p class="muted" id="mfaStatus" data-i18n="security.mfaDisabled">Two-factor authentication is currently disabled.</p>
+              </div>
+              <div class="mfa-actions">
+                <button class="btn ghost" type="button" id="setupMfaBtn" data-i18n="security.setupMfa">Generate secret</button>
+                <button class="btn primary" type="button" id="enableMfaBtn" data-i18n="security.enableMfa">Enable MFA</button>
+                <button class="btn ghost danger" type="button" id="disableMfaBtn" data-i18n="security.disableMfa">Disable</button>
+              </div>
+            </div>
+            <div class="mfa-secret hidden" id="mfaSecretPanel">
+              <div class="secret-code" id="mfaSecretValue">••••••</div>
+              <p class="muted small" data-i18n="security.mfaInstructions">Scan or enter this secret into your authenticator app, then confirm with a code.</p>
+              <div class="mfa-confirm">
+                <input id="mfaTokenInput" maxlength="6" inputmode="numeric" data-i18n-placeholder="security.mfaPlaceholder" placeholder="123456">
+                <button class="btn primary" type="button" id="confirmMfaBtn" data-i18n="security.confirmMfa">Confirm</button>
+              </div>
+            </div>
+          </div>
+        </article>
+
         <article class="card">
           <h2 data-i18n="manual.title">Manual rule</h2>
           <p data-i18n="manual.description">Create a dip buying strategy with your preferred take-profit target.</p>
@@ -183,6 +234,21 @@
                 <label for="budget" data-i18n="manual.budgetLabel">Trade budget (USDT)</label>
                 <input id="budget" type="number" step="0.01" min="0" required data-i18n-placeholder="manual.budgetPlaceholder">
               </div>
+            </div>
+            <div class="form-row">
+              <div>
+                <label for="stopLoss" data-i18n="manual.stopLabel">Stop loss %</label>
+                <input id="stopLoss" type="number" step="0.01" min="0" data-i18n-placeholder="manual.stopPlaceholder">
+              </div>
+              <div>
+                <label for="trailingStop" data-i18n="manual.trailingLabel">Trailing stop %</label>
+                <input id="trailingStop" type="number" step="0.01" min="0" data-i18n-placeholder="manual.trailingPlaceholder">
+              </div>
+            </div>
+            <div>
+              <label for="partials" data-i18n="manual.partialsLabel">Partial take-profits</label>
+              <input id="partials" data-i18n-placeholder="manual.partialsPlaceholder" placeholder="50@2,50@5">
+              <p class="muted small" data-i18n="manual.partialsHint">Format: percentage@target, for example 50@2 means sell 50% at +2%.</p>
             </div>
             <div class="actions">
               <button class="btn primary" type="submit" data-i18n="manual.add">Add rule</button>
@@ -287,6 +353,7 @@
           </div>
         </div>
         <p class="completed-trades-note small" id="completedTradesNotice"></p>
+        <div class="performance-grid" id="performanceMetrics"></div>
         <div class="completed-trades-list" id="completedTradesList"></div>
       </section>
     </main>

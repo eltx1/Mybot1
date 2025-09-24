@@ -5,7 +5,10 @@ import { createBinanceClient } from "../binance.js";
 const intervalMs = Number(workerData?.intervalMs) || 5000;
 const processor = createEngineProcessor({
   reportRuleIssue: payload => callParent("reportRuleIssue", payload),
-  clearRuleIssue: payload => callParent("clearRuleIssue", payload)
+  clearRuleIssue: payload => callParent("clearRuleIssue", payload),
+  loadRuleState: payload => callParent("loadRuleState", payload),
+  saveRuleState: payload => callParent("saveRuleState", payload),
+  notifyRuleEvent: payload => callParent("notifyRuleEvent", payload)
 });
 
 const pendingCalls = new Map();
