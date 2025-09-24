@@ -40,6 +40,8 @@
           emailPlaceholder: "name@example.com",
           passwordLabel: "Password",
           passwordPlaceholder: "Enter password",
+          mfaLabel: "Authenticator code",
+          mfaPlaceholder: "123456",
           nameLabel: "Full name",
           namePlaceholder: "How should we greet you?",
           loginCta: "Sign in",
@@ -74,6 +76,13 @@
           tpPlaceholder: "2",
           budgetLabel: "Trade budget (USDT)",
           budgetPlaceholder: "50",
+          stopLabel: "Stop loss %",
+          stopPlaceholder: "Optional",
+          trailingLabel: "Trailing stop %",
+          trailingPlaceholder: "Optional",
+          partialsLabel: "Partial take-profits",
+          partialsPlaceholder: "50@2,50@5",
+          partialsHint: "Format: quantity% @ target%. Example: 50@2 means sell 50% at +2%.",
           add: "Add rule",
           sync: "Sync with engine",
           tableTitle: "Manual rules",
@@ -134,6 +143,36 @@
             return: "Return"
           }
         },
+        analytics: {
+          title: "Performance overview",
+          totalProfit: "Total profit",
+          totalTrades: "Total trades",
+          averageReturn: "Avg return",
+          winRate: "Win rate",
+          bestTrade: "Best trade",
+          worstTrade: "Worst trade",
+          avgHold: "Average hold"
+        },
+        security: {
+          title: "Security center",
+          description: "Manage login protection and instant alerts for rule activity.",
+          alertEmailLabel: "Alert email",
+          alertEmailPlaceholder: "name@example.com",
+          alertWebhookLabel: "Webhook URL",
+          alertWebhookPlaceholder: "https://...",
+          alertTelegramLabel: "Telegram chat ID",
+          alertTelegramPlaceholder: "123456789",
+          saveAlerts: "Save alert channels",
+          mfaTitle: "Multi-factor authentication",
+          mfaDisabled: "Two-factor authentication is currently disabled.",
+          mfaEnabledStatus: "Two-factor authentication is active.",
+          mfaInstructions: "Scan or enter this secret into your authenticator app, then confirm with a code.",
+          setupMfa: "Generate secret",
+          enableMfa: "Enable MFA",
+          disableMfa: "Disable",
+          confirmMfa: "Confirm",
+          mfaPlaceholder: "123456"
+        },
         manualRules: {
           buyOnDipLabel: "Buy on dip:",
           takeProfitLabel: "Take profit:",
@@ -168,7 +207,14 @@
           manualLimit: "Your plan allows up to {{count}} manual rules.",
           aiLimit: "Your plan allows up to {{count}} AI rules.",
           checkoutStarted: "Redirecting you to complete the payment...",
-          checkoutError: "Unable to start the checkout. Please try again."
+          checkoutError: "Unable to start the checkout. Please try again.",
+          alertsSaved: "Alert channels updated.",
+          mfaEnabled: "Multi-factor authentication enabled.",
+          mfaDisabled: "Multi-factor authentication disabled.",
+          mfaSecretGenerated: "Authenticator secret generated. Enter a code to finish setup.",
+          mfaTokenRequired: "Enter the 6-digit code from your authenticator app.",
+          mfaInvalid: "The code you entered is not valid. Try again.",
+          mfaRequired: "Enter your authenticator code to continue."
         },
         subscription: {
           title: "Your plan",
@@ -244,6 +290,8 @@
           emailPlaceholder: "name@example.com",
           passwordLabel: "كلمة المرور",
           passwordPlaceholder: "أدخل كلمة المرور",
+          mfaLabel: "رمز المصادقة",
+          mfaPlaceholder: "123456",
           nameLabel: "الاسم الكامل",
           namePlaceholder: "كيف نرحب بك؟",
           loginCta: "دخول",
@@ -278,6 +326,13 @@
           tpPlaceholder: "2",
           budgetLabel: "ميزانية الصفقة (USDT)",
           budgetPlaceholder: "50",
+          stopLabel: "وقف الخسارة %",
+          stopPlaceholder: "اختياري",
+          trailingLabel: "ستوب متحرك %",
+          trailingPlaceholder: "اختياري",
+          partialsLabel: "أهداف جني ربح جزئية",
+          partialsPlaceholder: "50@2,50@5",
+          partialsHint: "اكتب النسبة@الهدف، مثال: ‎50@2‎ تعني بيع 50٪ عند +2٪.",
           add: "إضافة القاعدة",
           sync: "مزامنة مع المحرك",
           tableTitle: "القواعد اليدوية",
@@ -338,6 +393,36 @@
             return: "العائد"
           }
         },
+        analytics: {
+          title: "نظرة على الأداء",
+          totalProfit: "إجمالي الربح",
+          totalTrades: "عدد الصفقات",
+          averageReturn: "متوسط العائد",
+          winRate: "نسبة الربح",
+          bestTrade: "أفضل صفقة",
+          worstTrade: "أسوأ صفقة",
+          avgHold: "متوسط مدة الصفقة"
+        },
+        security: {
+          title: "مركز الأمان",
+          description: "أدر حماية الدخول والتنبيهات الفورية لأداء القواعد.",
+          alertEmailLabel: "بريد التنبيه",
+          alertEmailPlaceholder: "name@example.com",
+          alertWebhookLabel: "رابط الويب هوك",
+          alertWebhookPlaceholder: "https://...",
+          alertTelegramLabel: "معرّف دردشة تيليجرام",
+          alertTelegramPlaceholder: "123456789",
+          saveAlerts: "حفظ قنوات التنبيه",
+          mfaTitle: "التحقق متعدد العوامل",
+          mfaDisabled: "لم يتم تفعيل التحقق بخطوتين بعد.",
+          mfaEnabledStatus: "التحقق بخطوتين مفعل حاليًا.",
+          mfaInstructions: "امسح أو أدخل هذا المفتاح في تطبيق المصادقة ثم أكد بالرمز.",
+          setupMfa: "توليد المفتاح",
+          enableMfa: "تفعيل التحقق",
+          disableMfa: "تعطيل",
+          confirmMfa: "تأكيد",
+          mfaPlaceholder: "123456"
+        },
         manualRules: {
           buyOnDipLabel: "الشراء عند الانخفاض:",
           takeProfitLabel: "جني الربح:",
@@ -372,7 +457,14 @@
           manualLimit: "باقتك تسمح حتى {{count}} من القواعد اليدوية.",
           aiLimit: "باقتك تسمح حتى {{count}} من قواعد الذكاء الاصطناعي.",
           checkoutStarted: "جاري تحويلك لإتمام الدفع...",
-          checkoutError: "تعذر بدء عملية الدفع، حاول مرة أخرى."
+          checkoutError: "تعذر بدء عملية الدفع، حاول مرة أخرى.",
+          alertsSaved: "تم تحديث قنوات التنبيه.",
+          mfaEnabled: "تم تفعيل التحقق متعدد العوامل.",
+          mfaDisabled: "تم تعطيل التحقق متعدد العوامل.",
+          mfaSecretGenerated: "تم إنشاء مفتاح المصادقة. أدخل الرمز لإكمال التفعيل.",
+          mfaTokenRequired: "أدخل الرمز المكوّن من 6 أرقام من تطبيق المصادقة.",
+          mfaInvalid: "الرمز غير صحيح، حاول مرة أخرى.",
+          mfaRequired: "أدخل رمز المصادقة للمتابعة."
         },
         subscription: {
           title: "باقتك",
@@ -410,6 +502,20 @@
       }
     };
 
+    const defaultSecurityState = () => ({
+      alertEmail: '',
+      alertWebhookUrl: '',
+      alertTelegramChat: '',
+      preferences: {},
+      mfaEnabled: false,
+      mfaConfigured: false,
+      mfaSecret: null,
+      otpauth: null,
+      mfaPanelOpen: false,
+      showSecret: false,
+      mfaMode: 'enable'
+    });
+
     const state = {
       language: localStorage.getItem('mybot_language') || 'en',
       token: localStorage.getItem('mybot_token') || '',
@@ -425,6 +531,9 @@
       completedTrades: [],
       completedTradesErrors: [],
       isCompletedTradesLoading: false,
+      performanceMetrics: null,
+      loginMfaRequired: false,
+      security: defaultSecurityState(),
       lastRuleErrorsDigest: ''
     };
 
@@ -474,6 +583,21 @@
     const manualRestriction = document.getElementById('manualRestriction');
     const aiRestriction = document.getElementById('aiRestriction');
     const subscriptionCard = document.getElementById('subscriptionCard');
+    const performanceMetricsEl = document.getElementById('performanceMetrics');
+    const alertSettingsForm = document.getElementById('alertSettingsForm');
+    const alertEmailInput = document.getElementById('alertEmail');
+    const alertWebhookInput = document.getElementById('alertWebhook');
+    const alertTelegramInput = document.getElementById('alertTelegram');
+    const mfaStatusText = document.getElementById('mfaStatus');
+    const setupMfaBtn = document.getElementById('setupMfaBtn');
+    const enableMfaBtn = document.getElementById('enableMfaBtn');
+    const disableMfaBtn = document.getElementById('disableMfaBtn');
+    const confirmMfaBtn = document.getElementById('confirmMfaBtn');
+    const mfaSecretPanel = document.getElementById('mfaSecretPanel');
+    const mfaSecretValue = document.getElementById('mfaSecretValue');
+    const mfaTokenInput = document.getElementById('mfaTokenInput');
+    const loginMfaRow = document.getElementById('loginMfaRow');
+    const loginMfaInput = document.getElementById('loginMfa');
 
     function resolveTranslation(lang, key) {
       const fallback = translations.en;
@@ -534,6 +658,9 @@
       renderTables();
       renderOrders(currentOrdersCache);
       renderCompletedTrades(state.completedTrades, state.completedTradesErrors);
+      renderPerformanceMetrics();
+      renderSecuritySettings();
+      renderLoginMfa();
     }
 
     function setStatus(message, type = 'info') {
@@ -705,6 +832,21 @@
       return `${sign}${abs}%`;
     }
 
+    function parsePartialTargets(input) {
+      if (!input) return [];
+      const parts = String(input).split(',');
+      const steps = [];
+      for (const part of parts) {
+        if (!part) continue;
+        const [portionRaw, profitRaw] = part.split('@');
+        const portion = Number.parseFloat(portionRaw);
+        const profit = Number.parseFloat(profitRaw);
+        if (!(portion > 0) || !(profit > 0)) continue;
+        steps.push({ portionPct: portion, profitPct: profit });
+      }
+      return steps;
+    }
+
     function formatDuration(ms) {
       const num = Number(ms);
       if (!Number.isFinite(num) || num <= 0) {
@@ -778,14 +920,35 @@
         const toggleDisabled = !manualEnabled || (!rule.enabled && capReached);
         const manualError = resolveRuleError(rule);
         const manualErrorHtml = manualError ? `<div class="rule-error">${escapeHtml(manualError)}</div>` : '';
+        const steps = Array.isArray(rule.takeProfitSteps) ? rule.takeProfitSteps.filter(step => Number(step?.profitPct) > 0) : [];
+        let targetsHtml = `<div>${escapeHtml(translate('manualRules.buyOnDipLabel'))} <strong>${escapeHtml(formatPercent(rule.dipPct))}</strong></div>`;
+        if (steps.length) {
+          targetsHtml += `<div class="muted small">${escapeHtml(translate('manual.partialsLabel'))}</div>`;
+          steps.forEach(step => {
+            const portion = formatPercent(step.portionPct);
+            const profit = formatSignedPercent(step.profitPct);
+            targetsHtml += `<div class="muted small">${escapeHtml(portion)} → ${escapeHtml(profit)}</div>`;
+          });
+        } else {
+          targetsHtml += `<div class="muted small">${escapeHtml(translate('manualRules.takeProfitLabel'))} ${escapeHtml(formatPercent(rule.tpPct))}</div>`;
+        }
+        const riskParts = [];
+        if (Number(rule.stopLossPct) > 0) {
+          riskParts.push(`${translate('manual.stopLabel')} ${formatPercent(rule.stopLossPct)}`);
+        }
+        if (Number(rule.trailingStopPct) > 0) {
+          riskParts.push(`${translate('manual.trailingLabel')} ${formatPercent(rule.trailingStopPct)}`);
+        }
+        if (riskParts.length) {
+          targetsHtml += `<div class="muted small">${escapeHtml(riskParts.join(' • '))}</div>`;
+        }
         tr.innerHTML = `
           <td data-label="${escapeHtml(translate('manual.table.rule'))}">
             <div class="symbol">${escapeHtml(rule.symbol)}</div>
             ${manualErrorHtml}
           </td>
           <td data-label="${escapeHtml(translate('manual.table.targets'))}">
-            <div>${escapeHtml(translate('manualRules.buyOnDipLabel'))} <strong>${formatPercent(rule.dipPct)}</strong></div>
-            <div class="muted small">${escapeHtml(translate('manualRules.takeProfitLabel'))} ${formatPercent(rule.tpPct)}</div>
+            ${targetsHtml}
           </td>
           <td data-label="${escapeHtml(translate('manual.table.budget'))}">${formatCurrency(rule.budgetUSDT)}</td>
           <td data-label="${escapeHtml(translate('manual.table.status'))}">
@@ -958,6 +1121,126 @@
         `;
         completedTradesList.appendChild(card);
       }
+    }
+
+    function renderPerformanceMetrics(metrics) {
+      if (!performanceMetricsEl) return;
+      if (metrics !== undefined) {
+        state.performanceMetrics = metrics && typeof metrics === 'object' ? metrics : null;
+      }
+      const data = state.performanceMetrics;
+      performanceMetricsEl.innerHTML = '';
+      if (!data || !Number(data.totalTrades)) {
+        return;
+      }
+
+      const quoteAsset = data.bestTrade?.quoteAsset
+        || data.worstTrade?.quoteAsset
+        || (state.completedTrades[0]?.quoteAsset || 'USDT');
+
+      const createMetricCard = (labelKey, value, trendClass = '', detail) => {
+        const card = document.createElement('div');
+        card.className = 'metric-card';
+        const label = document.createElement('span');
+        label.className = 'metric-label';
+        label.textContent = translate(labelKey);
+        const valueEl = document.createElement('span');
+        valueEl.className = 'metric-value';
+        valueEl.textContent = value;
+        if (trendClass) {
+          valueEl.classList.add(trendClass);
+        }
+        card.appendChild(label);
+        card.appendChild(valueEl);
+        if (detail) {
+          const detailEl = document.createElement('span');
+          detailEl.className = `metric-trend ${trendClass || ''}`.trim();
+          detailEl.textContent = detail;
+          card.appendChild(detailEl);
+        }
+        return card;
+      };
+
+      const cards = [];
+      const totalProfitTrend = data.totalProfit > 0 ? 'positive' : data.totalProfit < 0 ? 'negative' : '';
+      cards.push(createMetricCard('analytics.totalProfit', formatSignedCurrency(data.totalProfit, quoteAsset), totalProfitTrend));
+      const avgReturnTrend = data.averageProfitPct > 0 ? 'positive' : data.averageProfitPct < 0 ? 'negative' : '';
+      cards.push(createMetricCard('analytics.averageReturn', formatSignedPercent(data.averageProfitPct), avgReturnTrend));
+      cards.push(createMetricCard('analytics.winRate', formatPercent(data.winRate), data.winRate >= 50 ? 'positive' : ''));
+      cards.push(createMetricCard('analytics.totalTrades', String(data.totalTrades)));
+      cards.push(createMetricCard('analytics.avgHold', formatDuration(data.averageHoldMs)));
+
+      if (data.bestTrade) {
+        const bestTrend = data.bestTrade.profit > 0 ? 'positive' : data.bestTrade.profit < 0 ? 'negative' : '';
+        const detail = `${data.bestTrade.symbol || ''} · ${formatSignedPercent(data.bestTrade.profitPct)}`;
+        cards.push(createMetricCard(
+          'analytics.bestTrade',
+          formatSignedCurrency(data.bestTrade.profit, data.bestTrade.quoteAsset || quoteAsset),
+          bestTrend,
+          detail
+        ));
+      }
+
+      if (data.worstTrade) {
+        const worstTrend = data.worstTrade.profit > 0 ? 'positive' : data.worstTrade.profit < 0 ? 'negative' : '';
+        const detail = `${data.worstTrade.symbol || ''} · ${formatSignedPercent(data.worstTrade.profitPct)}`;
+        cards.push(createMetricCard(
+          'analytics.worstTrade',
+          formatSignedCurrency(data.worstTrade.profit, data.worstTrade.quoteAsset || quoteAsset),
+          worstTrend,
+          detail
+        ));
+      }
+
+      for (const card of cards) {
+        performanceMetricsEl.appendChild(card);
+      }
+    }
+
+    function renderSecuritySettings() {
+      const security = state.security || defaultSecurityState();
+      if (alertEmailInput) {
+        alertEmailInput.value = security.alertEmail || '';
+      }
+      if (alertWebhookInput) {
+        alertWebhookInput.value = security.alertWebhookUrl || '';
+      }
+      if (alertTelegramInput) {
+        alertTelegramInput.value = security.alertTelegramChat || '';
+      }
+      if (mfaStatusText) {
+        const key = security.mfaEnabled ? 'security.mfaEnabledStatus' : 'security.mfaDisabled';
+        mfaStatusText.textContent = translate(key);
+      }
+      if (setupMfaBtn) {
+        setupMfaBtn.disabled = !state.token || security.mfaEnabled;
+      }
+      if (enableMfaBtn) {
+        enableMfaBtn.disabled = !state.token || security.mfaEnabled;
+      }
+      if (disableMfaBtn) {
+        disableMfaBtn.disabled = !state.token || !security.mfaEnabled;
+      }
+      if (confirmMfaBtn) {
+        confirmMfaBtn.disabled = !state.token || !security.mfaPanelOpen;
+        confirmMfaBtn.dataset.mode = security.mfaMode || 'enable';
+      }
+      if (mfaSecretPanel) {
+        const shouldShow = Boolean(security.mfaPanelOpen && (security.mfaSecret || security.mfaConfigured || security.mfaEnabled));
+        mfaSecretPanel.classList.toggle('hidden', !shouldShow);
+      }
+      if (mfaSecretValue) {
+        if (security.showSecret && security.mfaSecret) {
+          mfaSecretValue.textContent = security.mfaSecret;
+        } else {
+          mfaSecretValue.textContent = '••••••';
+        }
+      }
+    }
+
+    function renderLoginMfa() {
+      if (!loginMfaRow) return;
+      loginMfaRow.classList.toggle('hidden', !state.loginMfaRequired);
     }
 
     function updateEntitlementsFromResponse(payload) {
@@ -1391,6 +1674,10 @@
         email: document.getElementById('loginEmail').value,
         password: document.getElementById('loginPassword').value
       };
+      const mfaTokenValue = loginMfaInput ? loginMfaInput.value.trim() : '';
+      if (mfaTokenValue) {
+        payload.mfaToken = mfaTokenValue;
+      }
       try {
         const res = await fetch('/api/auth/login', {
           method: 'POST',
@@ -1398,9 +1685,28 @@
           body: JSON.stringify(payload)
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || 'Login failed');
+        if (!res.ok) {
+          if (data.mfaRequired) {
+            state.loginMfaRequired = true;
+            renderLoginMfa();
+            if (loginMfaInput) {
+              loginMfaInput.value = '';
+              loginMfaInput.focus();
+            }
+            const key = typeof data.error === 'string' && data.error.toLowerCase().includes('invalid')
+              ? 'status.mfaInvalid'
+              : 'status.mfaRequired';
+            throw new Error(translate(key));
+          }
+          throw new Error(data.error || 'Login failed');
+        }
         setToken(data.token);
         state.user = data.user;
+        state.loginMfaRequired = false;
+        renderLoginMfa();
+        if (loginMfaInput) {
+          loginMfaInput.value = '';
+        }
         await bootstrapDashboard();
         setStatus(translate('status.loginSuccess'), 'success');
       } catch (err) {
@@ -1442,6 +1748,7 @@
         await loadRules();
         await loadOrders();
         await loadCompletedTrades(true);
+        await loadSecuritySettings();
         await refreshApiKeysStatus();
         if (state.ordersTimer) clearInterval(state.ordersTimer);
         state.ordersTimer = setInterval(() => loadOrders(true), 8000);
@@ -1511,13 +1818,188 @@
         const trades = Array.isArray(data?.trades) ? data.trades : [];
         const errors = Array.isArray(data?.errors) ? data.errors : [];
         renderCompletedTrades(trades, errors);
+        renderPerformanceMetrics(data?.metrics || null);
         if (!silent) setStatus(translate('status.completedRefreshed'), 'info');
       } catch (err) {
         console.error('completed trades error', err);
         renderCompletedTrades([], [err.message]);
+        renderPerformanceMetrics(null);
         setStatus(err.message, 'error');
       } finally {
         state.isCompletedTradesLoading = false;
+      }
+    }
+
+    async function loadSecuritySettings() {
+      if (!state.token) {
+        state.security = defaultSecurityState();
+        renderSecuritySettings();
+        return;
+      }
+      try {
+        const data = await api('/api/security/settings');
+        const secret = data?.mfaSecret || null;
+        state.security = {
+          ...defaultSecurityState(),
+          ...state.security,
+          alertEmail: data?.alertEmail || '',
+          alertWebhookUrl: data?.alertWebhookUrl || '',
+          alertTelegramChat: data?.alertTelegramChat || '',
+          preferences: data?.preferences || {},
+          mfaEnabled: Boolean(data?.mfaEnabled),
+          mfaConfigured: Boolean(data?.mfaConfigured || secret),
+          mfaSecret: data?.mfaEnabled ? null : (secret || state.security?.mfaSecret || null),
+          otpauth: data?.otpauth || state.security?.otpauth || null,
+          mfaPanelOpen: false,
+          showSecret: false,
+          mfaMode: 'enable'
+        };
+        renderSecuritySettings();
+      } catch (err) {
+        console.error('security settings load error', err);
+      }
+    }
+
+    async function submitAlertSettings(event) {
+      event.preventDefault();
+      if (!state.token) {
+        setStatus(translate('subscription.loginRequired'), 'error');
+        return;
+      }
+      const payload = {
+        alertEmail: alertEmailInput?.value || '',
+        alertWebhookUrl: alertWebhookInput?.value || '',
+        alertTelegramChat: alertTelegramInput?.value || ''
+      };
+      try {
+        const response = await api('/api/security/alerts', { method: 'POST', body: payload });
+        if (response?.settings) {
+          state.security = {
+            ...state.security,
+            alertEmail: response.settings.alertEmail || '',
+            alertWebhookUrl: response.settings.alertWebhookUrl || '',
+            alertTelegramChat: response.settings.alertTelegramChat || '',
+            preferences: response.settings.preferences || state.security.preferences || {}
+          };
+          renderSecuritySettings();
+        }
+        setStatus(translate('status.alertsSaved'), 'success');
+      } catch (err) {
+        console.error('alert settings error', err);
+        setStatus(err.message, 'error');
+      }
+    }
+
+    async function setupMfa() {
+      if (!state.token) {
+        setStatus(translate('subscription.loginRequired'), 'error');
+        return;
+      }
+      try {
+        const data = await api('/api/security/mfa/setup', { method: 'POST' });
+        state.security = {
+          ...state.security,
+          mfaEnabled: false,
+          mfaConfigured: Boolean(data?.secret),
+          mfaSecret: data?.secret || null,
+          otpauth: data?.otpauth || null,
+          mfaPanelOpen: true,
+          showSecret: true,
+          mfaMode: 'enable'
+        };
+        renderSecuritySettings();
+        setStatus(translate('status.mfaSecretGenerated'), 'info');
+        if (mfaTokenInput) {
+          mfaTokenInput.value = '';
+          mfaTokenInput.focus();
+        }
+      } catch (err) {
+        console.error('setup mfa error', err);
+        setStatus(err.message, 'error');
+      }
+    }
+
+    async function openEnableMfa() {
+      if (!state.token) {
+        setStatus(translate('subscription.loginRequired'), 'error');
+        return;
+      }
+      if (state.security?.mfaEnabled) {
+        renderSecuritySettings();
+        return;
+      }
+      if (!state.security?.mfaSecret) {
+        await setupMfa();
+        return;
+      }
+      state.security = {
+        ...state.security,
+        mfaPanelOpen: true,
+        showSecret: true,
+        mfaMode: 'enable'
+      };
+      renderSecuritySettings();
+      if (mfaTokenInput) mfaTokenInput.focus();
+    }
+
+    function openDisableMfa() {
+      if (!state.token) {
+        setStatus(translate('subscription.loginRequired'), 'error');
+        return;
+      }
+      if (!state.security?.mfaEnabled) {
+        return;
+      }
+      state.security = {
+        ...state.security,
+        mfaPanelOpen: true,
+        showSecret: false,
+        mfaMode: 'disable'
+      };
+      if (mfaTokenInput) {
+        mfaTokenInput.value = '';
+        mfaTokenInput.focus();
+      }
+      renderSecuritySettings();
+    }
+
+    async function confirmMfaAction() {
+      if (!state.token) {
+        setStatus(translate('subscription.loginRequired'), 'error');
+        return;
+      }
+      const token = (mfaTokenInput?.value || '').trim();
+      if (!token || token.length < 6) {
+        setStatus(translate('status.mfaTokenRequired'), 'error');
+        if (mfaTokenInput) mfaTokenInput.focus();
+        return;
+      }
+      const mode = (state.security?.mfaMode || confirmMfaBtn?.dataset.mode || 'enable').toLowerCase();
+      try {
+        if (mode === 'disable') {
+          await api('/api/security/mfa/disable', { method: 'POST', body: { token } });
+          setStatus(translate('status.mfaDisabled'), 'info');
+        } else {
+          await api('/api/security/mfa/enable', { method: 'POST', body: { token } });
+          setStatus(translate('status.mfaEnabled'), 'success');
+        }
+        if (mfaTokenInput) {
+          mfaTokenInput.value = '';
+        }
+        state.security = {
+          ...state.security,
+          mfaPanelOpen: false,
+          showSecret: false,
+          mfaMode: 'enable'
+        };
+        await loadSecuritySettings();
+      } catch (err) {
+        console.error('mfa confirm error', err);
+        const message = /invalid mfa token/i.test(err.message || '')
+          ? translate('status.mfaInvalid')
+          : err.message;
+        setStatus(message, 'error');
+        if (mfaTokenInput) mfaTokenInput.focus();
       }
     }
 
@@ -1591,6 +2073,18 @@
         enabled: true,
         createdAt: Date.now()
       };
+      const stopLoss = Number(document.getElementById('stopLoss').value);
+      const trailing = Number(document.getElementById('trailingStop').value);
+      const partials = parsePartialTargets(document.getElementById('partials').value);
+      if (stopLoss > 0) {
+        rule.stopLossPct = stopLoss;
+      }
+      if (trailing > 0) {
+        rule.trailingStopPct = trailing;
+      }
+      if (partials.length) {
+        rule.takeProfitSteps = partials;
+      }
       const next = [...state.rules, rule];
       try {
         await persistAll(next, { text: translate('status.manualAdded'), type: 'success' });
@@ -1733,11 +2227,19 @@
       state.completedTrades = [];
       state.completedTradesErrors = [];
       state.isCompletedTradesLoading = false;
+      state.performanceMetrics = null;
+      state.security = defaultSecurityState();
+      state.loginMfaRequired = false;
       if (state.ordersTimer) clearInterval(state.ordersTimer);
       updateEntitlements(null);
       renderTables();
       renderOrders([]);
       renderCompletedTrades([]);
+      renderPerformanceMetrics(null);
+      renderSecuritySettings();
+      renderLoginMfa();
+      if (loginMfaInput) loginMfaInput.value = '';
+      if (mfaTokenInput) mfaTokenInput.value = '';
       showLanding();
     }
 
@@ -1788,6 +2290,11 @@
     manualForm.addEventListener('submit', addManualRule);
     syncRulesBtn.addEventListener('click', syncRules);
     aiForm.addEventListener('submit', generateAiRule);
+    if (alertSettingsForm) alertSettingsForm.addEventListener('submit', submitAlertSettings);
+    if (setupMfaBtn) setupMfaBtn.addEventListener('click', setupMfa);
+    if (enableMfaBtn) enableMfaBtn.addEventListener('click', openEnableMfa);
+    if (disableMfaBtn) disableMfaBtn.addEventListener('click', openDisableMfa);
+    if (confirmMfaBtn) confirmMfaBtn.addEventListener('click', confirmMfaAction);
     refreshOrdersBtn.addEventListener('click', () => loadOrders());
     refreshCompletedBtn.addEventListener('click', () => loadCompletedTrades());
     languageToggle.addEventListener('click', () => {

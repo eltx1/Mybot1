@@ -15,6 +15,8 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import fetch from "node-fetch";
 import Stripe from "stripe";
+import rateLimit from "express-rate-limit";
+import { authenticator } from "otplib";
 import {
   randomUUID,
   createCipheriv,
@@ -24,7 +26,7 @@ import {
 } from "crypto";
 import EngineManager from "./engine/manager.js";
 import { createBinanceClient } from "./binance.js";
-import { summariseCompletedTrades } from "./lib/trades.js";
+import { summariseCompletedTrades, calculatePerformanceMetrics } from "./lib/trades.js";
 
 const app = express();
 app.use(express.json({
@@ -34,6 +36,20 @@ app.use(express.json({
     }
   }
 }));
+
+const loginLimiter = rateLimit({
+  windowMs: Math.max(30000, Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS || 60000)),
+  max: Math.max(5, Number(process.env.LOGIN_RATE_LIMIT_MAX || 10)),
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: req => {
+    const email = typeof req.body?.email === "string" ? req.body.email.toLowerCase() : "";
+    return `${req.ip || "unknown"}:${email}`;
+  },
+  handler: (req, res) => {
+    res.status(429).json({ error: "Too many login attempts. Please wait and try again." });
+  }
+});
 
 const allowList = (process.env.ALLOWED_ORIGINS || "").split(",").map(s => s.trim()).filter(Boolean);
 app.use((req, res, next) => {
@@ -154,12 +170,33 @@ const DEFAULT_AI_BUDGET = (() => {
 
 const ENGINE_INTERVAL_MS = Number(process.env.ENGINE_INTERVAL_MS || 5000);
 const SNAPSHOT_CONCURRENCY = Math.max(1, Number(process.env.ENGINE_SNAPSHOT_CONCURRENCY || 4));
+const LOGIN_LOCK_WINDOW_MS = Math.max(60000, Number(process.env.LOGIN_LOCK_WINDOW_MS || 15 * 60 * 1000));
+const LOGIN_FAILURE_THRESHOLD = Math.max(3, Number(process.env.LOGIN_FAILURE_THRESHOLD || 5));
+const MFA_TOKEN_WINDOW = Math.max(0, Number(process.env.MFA_WINDOW || 1));
+const MFA_STEP_SECONDS = Math.max(15, Number(process.env.MFA_STEP || 30));
+const NOTIFICATION_MAX_RETRIES = Math.max(1, Number(process.env.NOTIFICATION_MAX_RETRIES || 3));
+const RULE_STATE_VERSION = 1;
+const NOTIFICATION_EVENT_TYPES = {
+  RULE_ISSUE: "rule_issue",
+  LOGIN_FAILURE: "login_failure",
+  LOGIN_SUCCESS: "login_success",
+  POSITION_CLOSED: "position_closed",
+  POSITION_OPENED: "position_opened"
+};
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
+const MFA_ISSUER = process.env.MFA_ISSUER || "My1 Bot";
 const credentialCache = new Map();
 let engineManager;
 const ADMIN_EMAILS = new Set((process.env.ADMIN_EMAILS || "")
   .split(",")
   .map(email => email.trim().toLowerCase())
   .filter(Boolean));
+
+authenticator.options = {
+  ...authenticator.options,
+  step: MFA_STEP_SECONDS,
+  window: MFA_TOKEN_WINDOW
+};
 
 
 function encryptionKey() {
@@ -204,6 +241,16 @@ function buildAbsoluteUrl(pathname, fallback) {
     return url.toString();
   } catch {
     return fallback || APP_BASE_URL;
+  }
+}
+
+function isLikelyUrl(value) {
+  if (!value || typeof value !== "string") return false;
+  try {
+    const url = new URL(value.trim());
+    return Boolean(url.protocol && url.host);
+  } catch {
+    return false;
   }
 }
 
@@ -481,6 +528,9 @@ async function initDb() {
         symbol VARCHAR(32) NOT NULL,
         dip_pct DECIMAL(18,8) DEFAULT NULL,
         tp_pct DECIMAL(18,8) DEFAULT NULL,
+        stop_loss_pct DECIMAL(18,8) DEFAULT NULL,
+        trailing_stop_pct DECIMAL(18,8) DEFAULT NULL,
+        take_profit_steps LONGTEXT DEFAULT NULL,
         entry_price DECIMAL(18,8) DEFAULT NULL,
         exit_price DECIMAL(18,8) DEFAULT NULL,
         budget_usdt DECIMAL(18,8) NOT NULL DEFAULT 0,
@@ -490,6 +540,63 @@ async function initDb() {
         created_at BIGINT NOT NULL,
         INDEX idx_rules_user (user_id),
         CONSTRAINT fk_rules_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS rule_state (
+        rule_id VARCHAR(64) PRIMARY KEY,
+        user_id INT NOT NULL,
+        state_json LONGTEXT,
+        updated_at BIGINT NOT NULL,
+        CONSTRAINT fk_rule_state_rule FOREIGN KEY (rule_id) REFERENCES rules(id) ON DELETE CASCADE,
+        INDEX idx_rule_state_user (user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS login_attempts (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT DEFAULT NULL,
+        email VARCHAR(191) DEFAULT NULL,
+        ip_address VARCHAR(64) DEFAULT NULL,
+        user_agent VARCHAR(255) DEFAULT NULL,
+        success TINYINT(1) NOT NULL DEFAULT 0,
+        created_at BIGINT NOT NULL,
+        INDEX idx_login_attempts_email (email),
+        INDEX idx_login_attempts_user (user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS user_security_settings (
+        user_id INT PRIMARY KEY,
+        mfa_secret VARCHAR(255) DEFAULT NULL,
+        mfa_enabled TINYINT(1) NOT NULL DEFAULT 0,
+        alert_email VARCHAR(191) DEFAULT NULL,
+        alert_webhook_url VARCHAR(255) DEFAULT NULL,
+        alert_telegram_chat VARCHAR(64) DEFAULT NULL,
+        preferences_json LONGTEXT DEFAULT NULL,
+        updated_at BIGINT NOT NULL,
+        CONSTRAINT fk_security_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS notification_events (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        channel VARCHAR(32) NOT NULL,
+        target VARCHAR(255) NOT NULL,
+        payload LONGTEXT NOT NULL,
+        status VARCHAR(32) NOT NULL DEFAULT 'pending',
+        attempts INT NOT NULL DEFAULT 0,
+        last_error TEXT DEFAULT NULL,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        CONSTRAINT fk_notification_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        INDEX idx_notification_status (status),
+        INDEX idx_notification_user (user_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
@@ -593,6 +700,248 @@ async function upsertUserApiKeys(userId, apiKey, apiSecret) {
 
 async function deleteUserApiKeys(userId) {
   await pool.query("DELETE FROM user_api_keys WHERE user_id = ?", [userId]);
+}
+
+async function getSecuritySettings(userId, options = {}) {
+  if (!userId) return null;
+  const [rows] = await pool.query(
+    `SELECT user_id, mfa_secret, mfa_enabled, alert_email, alert_webhook_url, alert_telegram_chat, preferences_json
+     FROM user_security_settings WHERE user_id = ? LIMIT 1`,
+    [userId]
+  );
+  if (!rows.length) {
+    return {
+      userId,
+      mfaEnabled: false,
+      alertEmail: null,
+      alertWebhookUrl: null,
+      alertTelegramChat: null,
+      preferences: {},
+      ...(options.includeSecret ? { mfaSecret: null } : {})
+    };
+  }
+  const row = rows[0];
+  const preferences = safeJSONParse(row.preferences_json) || {};
+  const payload = {
+    userId,
+    mfaEnabled: row.mfa_enabled === 1 || row.mfa_enabled === true,
+    alertEmail: row.alert_email || null,
+    alertWebhookUrl: row.alert_webhook_url || null,
+    alertTelegramChat: row.alert_telegram_chat || null,
+    preferences
+  };
+  if (options.includeSecret) {
+    payload.mfaSecret = row.mfa_secret ? decryptSecret(row.mfa_secret) : null;
+  }
+  return payload;
+}
+
+async function upsertSecuritySettings(userId, updates = {}) {
+  if (!userId) return await getSecuritySettings(userId);
+  const existing = await getSecuritySettings(userId, { includeSecret: true }) || {};
+  const changes = {};
+  if (updates.mfaSecret !== undefined) {
+    changes.mfa_secret = updates.mfaSecret ? encryptSecret(updates.mfaSecret) : null;
+  }
+  if (updates.mfaEnabled !== undefined) {
+    changes.mfa_enabled = updates.mfaEnabled ? 1 : 0;
+  }
+  if (updates.alertEmail !== undefined) {
+    changes.alert_email = updates.alertEmail ? String(updates.alertEmail).trim() : null;
+  }
+  if (updates.alertWebhookUrl !== undefined) {
+    const trimmed = updates.alertWebhookUrl ? String(updates.alertWebhookUrl).trim() : "";
+    changes.alert_webhook_url = trimmed || null;
+  }
+  if (updates.alertTelegramChat !== undefined) {
+    const trimmed = updates.alertTelegramChat ? String(updates.alertTelegramChat).trim() : "";
+    changes.alert_telegram_chat = trimmed || null;
+  }
+  if (updates.preferences !== undefined) {
+    changes.preferences_json = safeJSONStringify(updates.preferences) || null;
+  }
+
+  const now = Date.now();
+  const hasExisting = existing && (existing.mfaEnabled !== undefined || existing.alertEmail !== undefined || existing.alertWebhookUrl !== undefined || existing.alertTelegramChat !== undefined || existing.preferences !== undefined || existing.mfaSecret !== undefined);
+  if (hasExisting) {
+    if (Object.keys(changes).length) {
+      const assignments = Object.keys(changes).map(column => `${column} = ?`).join(", ");
+      const values = [...Object.values(changes), now, userId];
+      await pool.query(`UPDATE user_security_settings SET ${assignments}${assignments ? ", " : ""}updated_at = ? WHERE user_id = ?`, values);
+    } else {
+      await pool.query(`UPDATE user_security_settings SET updated_at = ? WHERE user_id = ?`, [now, userId]);
+    }
+  } else {
+    await pool.query(
+      `INSERT INTO user_security_settings (user_id, mfa_secret, mfa_enabled, alert_email, alert_webhook_url, alert_telegram_chat, preferences_json, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        userId,
+        changes.mfa_secret !== undefined ? changes.mfa_secret : null,
+        changes.mfa_enabled !== undefined ? changes.mfa_enabled : 0,
+        changes.alert_email !== undefined ? changes.alert_email : null,
+        changes.alert_webhook_url !== undefined ? changes.alert_webhook_url : null,
+        changes.alert_telegram_chat !== undefined ? changes.alert_telegram_chat : null,
+        changes.preferences_json !== undefined ? changes.preferences_json : null,
+        now
+      ]
+    );
+  }
+  return getSecuritySettings(userId, { includeSecret: true });
+}
+
+async function recordLoginAttempt({ userId = null, email = null, ip = null, userAgent = null, success = false }) {
+  const cleanIp = ip ? String(ip).slice(0, 60) : null;
+  const agent = userAgent ? String(userAgent).slice(0, 250) : null;
+  await pool.query(
+    `INSERT INTO login_attempts (user_id, email, ip_address, user_agent, success, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [userId || null, email || null, cleanIp, agent, success ? 1 : 0, Date.now()]
+  );
+}
+
+async function countRecentFailedAttempts({ userId = null, email = null, ip = null, windowMs = LOGIN_LOCK_WINDOW_MS }) {
+  const since = Date.now() - Math.max(60000, Number(windowMs) || LOGIN_LOCK_WINDOW_MS);
+  const conditions = ["success = 0", "created_at >= ?"];
+  const params = [since];
+  if (userId) {
+    conditions.push("user_id = ?");
+    params.push(userId);
+  } else if (email) {
+    conditions.push("email = ?");
+    params.push(email);
+  }
+  if (ip) {
+    conditions.push("ip_address = ?");
+    params.push(String(ip).slice(0, 60));
+  }
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const [rows] = await pool.query(`SELECT COUNT(*) AS attempts FROM login_attempts ${where}`, params);
+  return Number(rows[0]?.attempts || 0);
+}
+
+async function shouldLockLogin({ userId = null, email = null, ip = null }) {
+  const attempts = await countRecentFailedAttempts({ userId, email, ip });
+  return attempts >= LOGIN_FAILURE_THRESHOLD;
+}
+
+async function getRuleState(userId, ruleId) {
+  if (!userId || !ruleId) return null;
+  const [rows] = await pool.query(
+    `SELECT state_json FROM rule_state WHERE user_id = ? AND rule_id = ? LIMIT 1`,
+    [userId, ruleId]
+  );
+  if (!rows.length) return null;
+  const parsed = safeJSONParse(rows[0].state_json);
+  return parsed && typeof parsed === "object" ? parsed : null;
+}
+
+async function saveRuleState(userId, ruleId, state) {
+  if (!userId || !ruleId) return;
+  if (!state) {
+    await pool.query(`DELETE FROM rule_state WHERE user_id = ? AND rule_id = ?`, [userId, ruleId]);
+    return;
+  }
+  const payload = safeJSONStringify(state) || "{}";
+  await pool.query(
+    `INSERT INTO rule_state (rule_id, user_id, state_json, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE state_json = VALUES(state_json), updated_at = VALUES(updated_at)` ,
+    [ruleId, userId, payload, Date.now()]
+  );
+}
+
+async function enqueueNotificationEvent({ userId, channel, target, payload }) {
+  if (!userId || !channel || !target) return null;
+  const jsonPayload = safeJSONStringify(payload) || "{}";
+  const now = Date.now();
+  const [result] = await pool.query(
+    `INSERT INTO notification_events (user_id, channel, target, payload, status, attempts, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'pending', 0, ?, ?)`,
+    [userId, channel, target, jsonPayload, now, now]
+  );
+  return { id: result.insertId, userId, channel, target, payload, attempts: 0, status: "pending" };
+}
+
+async function deliverNotificationEvent(event) {
+  if (!event) return;
+  const payload = {
+    timestamp: Date.now(),
+    eventType: event.payload?.eventType,
+    data: event.payload?.data
+  };
+  try {
+    if (event.channel === "webhook") {
+      const response = await fetch(event.target, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        throw new Error(`Webhook responded with status ${response.status}`);
+      }
+    } else if (event.channel === "email") {
+      console.log(`[ALERT][EMAIL] ${event.target}:`, payload);
+    } else if (event.channel === "telegram") {
+      if (TELEGRAM_BOT_TOKEN) {
+        const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+        const body = new URLSearchParams({
+          chat_id: event.target,
+          text: `[${payload.eventType}] ${payload.data?.message || payload.data?.ruleId || ''}`
+        });
+        const response = await fetch(url, { method: "POST", body });
+        if (!response.ok) {
+          throw new Error(`Telegram responded with status ${response.status}`);
+        }
+      } else {
+        console.log(`[ALERT][TELEGRAM:${event.target}]`, payload);
+      }
+    } else {
+      console.log(`[ALERT][${event.channel}] ${event.target}:`, payload);
+    }
+    await pool.query(
+      `UPDATE notification_events
+       SET status = 'delivered', attempts = attempts + 1, last_error = NULL, updated_at = ?
+       WHERE id = ?`,
+      [Date.now(), event.id]
+    );
+  } catch (err) {
+    await pool.query(
+      `UPDATE notification_events
+       SET status = 'failed', attempts = attempts + 1, last_error = ?, updated_at = ?
+       WHERE id = ?`,
+      [err?.message || String(err), Date.now(), event.id]
+    );
+    throw err;
+  }
+}
+
+async function triggerNotifications(userId, eventType, data = {}) {
+  if (!userId || !eventType) return;
+  const settings = await getSecuritySettings(userId, { includeSecret: false });
+  if (!settings) return;
+  const channels = [];
+  if (settings.alertWebhookUrl) {
+    channels.push({ channel: "webhook", target: settings.alertWebhookUrl });
+  }
+  if (settings.alertEmail) {
+    channels.push({ channel: "email", target: settings.alertEmail });
+  }
+  if (settings.alertTelegramChat) {
+    channels.push({ channel: "telegram", target: settings.alertTelegramChat });
+  }
+  if (!channels.length) return;
+  const payload = { eventType, data };
+  for (const channel of channels) {
+    try {
+      const event = await enqueueNotificationEvent({ userId, channel: channel.channel, target: channel.target, payload });
+      if (event) {
+        await deliverNotificationEvent({ ...event, payload });
+      }
+    } catch (err) {
+      console.error(`[NOTIFY] ${eventType} via ${channel.channel} failed`, err?.message || err);
+    }
+  }
 }
 
 function mapSubscriptionRow(row) {
@@ -977,6 +1326,31 @@ async function activateSubscription(reference, overrides = {}) {
   return findSubscriptionByReference(reference);
 }
 
+function normalizeTakeProfitSteps(input, fallbackPct) {
+  const steps = [];
+  const source = Array.isArray(input) ? input : [];
+  for (const raw of source) {
+    if (!raw || typeof raw !== "object") continue;
+    const profit = Number(raw.profitPct ?? raw.tpPct ?? raw.targetPct ?? raw.percent ?? raw.pct);
+    const portion = Number(raw.portionPct ?? raw.sizePct ?? raw.quantityPct ?? raw.weightPct ?? raw.weight ?? raw.percentOfPosition ?? raw.quantityPercent);
+    if (!(profit > 0)) continue;
+    const weight = Number.isFinite(portion) && portion > 0 ? portion : 0;
+    steps.push({ profitPct: profit, portionPct: weight });
+  }
+  if (!steps.length && fallbackPct > 0) {
+    steps.push({ profitPct: fallbackPct, portionPct: 100 });
+  }
+  steps.sort((a, b) => a.profitPct - b.profitPct);
+  const totalWeight = steps.reduce((sum, step) => sum + (Number(step.portionPct) || 0), 0);
+  if (totalWeight > 100.0001) {
+    const scale = 100 / totalWeight;
+    for (const step of steps) {
+      step.portionPct = Number((step.portionPct * scale).toFixed(4));
+    }
+  }
+  return steps;
+}
+
 function normalizeRules(input) {
   const normalized = [];
   let mutated = false;
@@ -1026,6 +1400,32 @@ function normalizeRules(input) {
       rule.budgetUSDT = 0;
     }
 
+    const stopLoss = Number(rule.stopLossPct);
+    if (Number.isFinite(stopLoss) && stopLoss > 0) {
+      if (stopLoss !== rule.stopLossPct) mutated = true;
+      rule.stopLossPct = stopLoss;
+    } else if (rule.stopLossPct) {
+      rule.stopLossPct = 0;
+      mutated = true;
+    }
+
+    const trailing = Number(rule.trailingStopPct);
+    if (Number.isFinite(trailing) && trailing > 0) {
+      if (trailing !== rule.trailingStopPct) mutated = true;
+      rule.trailingStopPct = trailing;
+    } else if (rule.trailingStopPct) {
+      rule.trailingStopPct = 0;
+      mutated = true;
+    }
+
+    const takeProfitSteps = normalizeTakeProfitSteps(rule.takeProfitSteps, Number(rule.tpPct));
+    if (JSON.stringify(takeProfitSteps) !== JSON.stringify(rule.takeProfitSteps || [])) {
+      mutated = true;
+      rule.takeProfitSteps = takeProfitSteps;
+    } else {
+      rule.takeProfitSteps = takeProfitSteps;
+    }
+
     if (rule.type === "manual") {
       const dip = Number(rule.dipPct);
       if (Number.isFinite(dip)) {
@@ -1069,6 +1469,15 @@ function normalizeRules(input) {
       }
     }
 
+    if (!Array.isArray(rule.takeProfitSteps) || !rule.takeProfitSteps.length) {
+      const fallbackPct = Number(rule.tpPct);
+      if (fallbackPct > 0) {
+        rule.takeProfitSteps = [{ profitPct: fallbackPct, portionPct: 100 }];
+      } else {
+        rule.takeProfitSteps = [];
+      }
+    }
+
     normalized.push(rule);
   }
   return { rules: normalized, mutated };
@@ -1081,6 +1490,9 @@ function mapRuleRow(row) {
     symbol: row.symbol,
     dipPct: row.dip_pct !== null ? Number(row.dip_pct) : 0,
     tpPct: row.tp_pct !== null ? Number(row.tp_pct) : 0,
+    stopLossPct: row.stop_loss_pct !== null ? Number(row.stop_loss_pct) : 0,
+    trailingStopPct: row.trailing_stop_pct !== null ? Number(row.trailing_stop_pct) : 0,
+    takeProfitSteps: safeJSONParse(row.take_profit_steps) || [],
     entryPrice: row.entry_price !== null ? Number(row.entry_price) : 0,
     exitPrice: row.exit_price !== null ? Number(row.exit_price) : 0,
     budgetUSDT: row.budget_usdt !== null ? Number(row.budget_usdt) : 0,
@@ -1223,13 +1635,16 @@ async function writeRules(userId, rules) {
     for (const rule of rules) {
       ids.push(rule.id);
       await connection.query(
-        `INSERT INTO rules (id, user_id, type, symbol, dip_pct, tp_pct, entry_price, exit_price, budget_usdt, enabled, ai_summary, ai_model, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO rules (id, user_id, type, symbol, dip_pct, tp_pct, stop_loss_pct, trailing_stop_pct, take_profit_steps, entry_price, exit_price, budget_usdt, enabled, ai_summary, ai_model, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
            type = VALUES(type),
            symbol = VALUES(symbol),
            dip_pct = VALUES(dip_pct),
            tp_pct = VALUES(tp_pct),
+           stop_loss_pct = VALUES(stop_loss_pct),
+           trailing_stop_pct = VALUES(trailing_stop_pct),
+           take_profit_steps = VALUES(take_profit_steps),
            entry_price = VALUES(entry_price),
            exit_price = VALUES(exit_price),
            budget_usdt = VALUES(budget_usdt),
@@ -1245,6 +1660,9 @@ async function writeRules(userId, rules) {
           rule.symbol,
           rule.type === "manual" ? Number(rule.dipPct) : null,
           rule.type === "manual" ? Number(rule.tpPct) : null,
+          Number(rule.stopLossPct) > 0 ? Number(rule.stopLossPct) : null,
+          Number(rule.trailingStopPct) > 0 ? Number(rule.trailingStopPct) : null,
+          safeJSONStringify(rule.takeProfitSteps) || null,
           rule.type === "ai" ? Number(rule.entryPrice) : null,
           rule.type === "ai" ? Number(rule.exitPrice) : null,
           Number(rule.budgetUSDT) || 0,
@@ -1280,15 +1698,25 @@ async function removeRule(userId, id) {
 }
 
 async function upsertRuleError({ userId, ruleId, code, message }) {
-  if (!userId || !ruleId) return;
+  if (!userId || !ruleId) return { changed: false };
   const text = typeof message === "string" ? message.trim() : String(message || "").trim();
-  if (!text) return;
+  if (!text) return { changed: false };
+  const [rows] = await pool.query(
+    `SELECT code, message FROM rule_errors WHERE user_id = ? AND rule_id = ? LIMIT 1`,
+    [userId, ruleId]
+  );
+  const existing = rows[0];
+  if (existing && existing.code === (code || null) && existing.message === text) {
+    await pool.query(`UPDATE rule_errors SET created_at = ? WHERE user_id = ? AND rule_id = ?`, [Date.now(), userId, ruleId]);
+    return { changed: false };
+  }
   await pool.query(
     `INSERT INTO rule_errors (rule_id, user_id, code, message, created_at)
      VALUES (?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE code = VALUES(code), message = VALUES(message), created_at = VALUES(created_at)`,
     [ruleId, userId, code || null, text, Date.now()]
   );
+  return { changed: true };
 }
 
 async function clearRuleError(userId, ruleId) {
@@ -1380,27 +1808,71 @@ app.post("/api/auth/register", handleAsync(async (req, res) => {
   res.json({ token, user });
 }));
 
-app.post("/api/auth/login", handleAsync(async (req, res) => {
-  const { email, password } = req.body || {};
+app.post("/api/auth/login", loginLimiter, handleAsync(async (req, res) => {
+  const { email, password, mfaToken } = req.body || {};
   const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
   const cleanPassword = typeof password === "string" ? password : "";
+  const ip = req.ip || req.headers["x-forwarded-for"] || "";
+  const userAgent = req.headers["user-agent"] || "";
 
   if (!cleanEmail || !cleanPassword) {
     return res.status(400).json({ error: "Email and password are required" });
   }
 
+  if (await shouldLockLogin({ email: cleanEmail, ip })) {
+    await recordLoginAttempt({ email: cleanEmail, ip, userAgent, success: false });
+    return res.status(429).json({ error: "Too many failed attempts. Please try again later." });
+  }
+
   const user = await findUserByEmail(cleanEmail);
   if (!user) {
+    await recordLoginAttempt({ email: cleanEmail, ip, userAgent, success: false });
     return res.status(401).json({ error: "Invalid credentials" });
+  }
+
+  if (await shouldLockLogin({ userId: user.id, ip })) {
+    await recordLoginAttempt({ userId: user.id, email: cleanEmail, ip, userAgent, success: false });
+    await triggerNotifications(user.id, NOTIFICATION_EVENT_TYPES.LOGIN_FAILURE, {
+      email: cleanEmail,
+      message: "Account temporarily locked due to repeated login failures",
+      ip
+    });
+    return res.status(429).json({ error: "Account temporarily locked due to repeated failures." });
   }
 
   const match = await bcrypt.compare(cleanPassword, user.password_hash);
   if (!match) {
+    await recordLoginAttempt({ userId: user.id, email: cleanEmail, ip, userAgent, success: false });
+    const failures = await countRecentFailedAttempts({ userId: user.id, ip });
+    if (failures >= LOGIN_FAILURE_THRESHOLD) {
+      await triggerNotifications(user.id, NOTIFICATION_EVENT_TYPES.LOGIN_FAILURE, {
+        email: cleanEmail,
+        attempts: failures,
+        ip
+      });
+    }
     return res.status(401).json({ error: "Invalid credentials" });
   }
 
+  const security = await getSecuritySettings(user.id, { includeSecret: true });
+  if (security?.mfaEnabled) {
+    if (!mfaToken) {
+      await recordLoginAttempt({ userId: user.id, email: cleanEmail, ip, userAgent, success: false });
+      return res.status(401).json({ error: "MFA token required", mfaRequired: true });
+    }
+    const secret = security.mfaSecret;
+    const valid = secret ? authenticator.check(String(mfaToken), secret) : false;
+    if (!valid) {
+      await recordLoginAttempt({ userId: user.id, email: cleanEmail, ip, userAgent, success: false });
+      return res.status(401).json({ error: "Invalid MFA token", mfaRequired: true });
+    }
+  }
+
+  await recordLoginAttempt({ userId: user.id, email: cleanEmail, ip, userAgent, success: true });
+  await triggerNotifications(user.id, NOTIFICATION_EVENT_TYPES.LOGIN_SUCCESS, { ip, email: cleanEmail });
+
   const token = signToken(user);
-  res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
+  res.json({ token, user: { id: user.id, name: user.name, email: user.email }, mfaRequired: Boolean(security?.mfaEnabled) });
 }));
 
 app.get("/api/auth/me", authRequired(handleAsync(async (req, res) => {
@@ -1409,6 +1881,84 @@ app.get("/api/auth/me", authRequired(handleAsync(async (req, res) => {
     getSubscriptionEntitlements(req.user.id, { includeHistory: true })
   ]);
   res.json({ user: req.user, hasApiKeys: hasKeys, subscription });
+}))); 
+
+app.get("/api/security/settings", authRequired(handleAsync(async (req, res) => {
+  const settings = await getSecuritySettings(req.user.id, { includeSecret: true });
+  res.json({
+    mfaEnabled: Boolean(settings?.mfaEnabled),
+    mfaConfigured: Boolean(settings?.mfaSecret),
+    alertEmail: settings?.alertEmail || null,
+    alertWebhookUrl: settings?.alertWebhookUrl || null,
+    alertTelegramChat: settings?.alertTelegramChat || null,
+    preferences: settings?.preferences || {}
+  });
+})));
+
+app.post("/api/security/alerts", authRequired(handleAsync(async (req, res) => {
+  const { alertEmail, alertWebhookUrl, alertTelegramChat, preferences } = req.body || {};
+  const updates = {};
+  if (alertEmail !== undefined) {
+    const trimmed = typeof alertEmail === "string" ? alertEmail.trim() : "";
+    updates.alertEmail = trimmed || null;
+  }
+  if (alertWebhookUrl !== undefined) {
+    const trimmed = typeof alertWebhookUrl === "string" ? alertWebhookUrl.trim() : "";
+    if (trimmed && !isLikelyUrl(trimmed)) {
+      return res.status(400).json({ error: "Invalid webhook URL" });
+    }
+    updates.alertWebhookUrl = trimmed || null;
+  }
+  if (alertTelegramChat !== undefined) {
+    const trimmed = typeof alertTelegramChat === "string" ? alertTelegramChat.trim() : "";
+    updates.alertTelegramChat = trimmed || null;
+  }
+  if (preferences !== undefined) {
+    if (preferences && typeof preferences !== "object") {
+      return res.status(400).json({ error: "Preferences must be an object" });
+    }
+    updates.preferences = preferences || {};
+  }
+  const updated = await upsertSecuritySettings(req.user.id, updates);
+  res.json({ ok: true, settings: {
+    mfaEnabled: Boolean(updated?.mfaEnabled),
+    alertEmail: updated?.alertEmail || null,
+    alertWebhookUrl: updated?.alertWebhookUrl || null,
+    alertTelegramChat: updated?.alertTelegramChat || null,
+    preferences: updated?.preferences || {}
+  }});
+})));
+
+app.post("/api/security/mfa/setup", authRequired(handleAsync(async (req, res) => {
+  const secret = authenticator.generateSecret();
+  await upsertSecuritySettings(req.user.id, { mfaSecret: secret, mfaEnabled: false });
+  const otpauth = authenticator.keyuri(req.user.email || String(req.user.id), MFA_ISSUER, secret);
+  res.json({ secret, otpauth, step: MFA_STEP_SECONDS });
+})));
+
+app.post("/api/security/mfa/enable", authRequired(handleAsync(async (req, res) => {
+  const { token } = req.body || {};
+  const settings = await getSecuritySettings(req.user.id, { includeSecret: true });
+  if (!settings?.mfaSecret) {
+    return res.status(400).json({ error: "Generate a secret first" });
+  }
+  if (!token || !authenticator.check(String(token), settings.mfaSecret)) {
+    return res.status(401).json({ error: "Invalid MFA token" });
+  }
+  await upsertSecuritySettings(req.user.id, { mfaEnabled: true });
+  res.json({ ok: true });
+})));
+
+app.post("/api/security/mfa/disable", authRequired(handleAsync(async (req, res) => {
+  const { token } = req.body || {};
+  const settings = await getSecuritySettings(req.user.id, { includeSecret: true });
+  if (settings?.mfaEnabled) {
+    if (!settings?.mfaSecret || !token || !authenticator.check(String(token), settings.mfaSecret)) {
+      return res.status(401).json({ error: "Invalid MFA token" });
+    }
+  }
+  await upsertSecuritySettings(req.user.id, { mfaEnabled: false, mfaSecret: null });
+  res.json({ ok: true });
 })));
 
 app.get("/api/health", handleAsync(async (req, res) => {
@@ -1710,12 +2260,14 @@ app.get("/api/trades/completed", authRequired(handleAsync(async (req, res) => {
   }
 
   trades.sort((a, b) => Number(b?.closedAt || 0) - Number(a?.closedAt || 0));
+  const metrics = calculatePerformanceMetrics(trades);
 
   res.json({
     trades: trades.slice(0, 20),
+    metrics,
     errors
   });
-})));
+}))); 
 
 function parseAiRoleResponse(text) {
   if (!text) throw new Error("AI response was empty.");
@@ -2260,10 +2812,24 @@ async function bootstrap() {
     intervalMs: ENGINE_INTERVAL_MS,
     hooks: {
       reportRuleIssue: async ({ userId, ruleId, code, message }) => {
-        await upsertRuleError({ userId, ruleId, code, message });
+        const result = await upsertRuleError({ userId, ruleId, code, message });
+        if (result?.changed) {
+          await triggerNotifications(userId, NOTIFICATION_EVENT_TYPES.RULE_ISSUE, { ruleId, code, message });
+        }
       },
       clearRuleIssue: async ({ userId, ruleId }) => {
         await clearRuleError(userId, ruleId);
+      },
+      loadRuleState: async ({ userId, ruleId }) => {
+        const state = await getRuleState(userId, ruleId);
+        return state;
+      },
+      saveRuleState: async ({ userId, ruleId, state }) => {
+        await saveRuleState(userId, ruleId, state);
+        return true;
+      },
+      notifyRuleEvent: async ({ userId, eventType, payload }) => {
+        await triggerNotifications(userId, eventType || NOTIFICATION_EVENT_TYPES.POSITION_OPENED, payload || {});
       }
     }
   });
