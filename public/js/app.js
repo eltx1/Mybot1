@@ -293,6 +293,7 @@
           payWithCryptomus: "Pay with crypto (Cryptomus)",
           loginRequired: "Sign in to subscribe to a plan.",
           renewing: "Processing payment confirmation...",
+          billingCycle: "Billing cycle: every {{days}} days",
           historyTitle: "Recent payments",
           historyEmpty: "No subscription history yet.",
           pendingNotice: "Awaiting payment confirmation for {{name}}.",
@@ -597,6 +598,7 @@
           payWithCryptomus: "الدفع بالعملات الرقمية (Cryptomus)",
           loginRequired: "سجل الدخول للاشتراك في باقة.",
           renewing: "جاري تأكيد عملية الدفع...",
+          billingCycle: "دورة الفوترة: كل {{days}} يوم",
           historyTitle: "سجل الدفعات",
           historyEmpty: "لا يوجد سجل دفعات بعد.",
           pendingNotice: "بانتظار تأكيد الدفع لباقـة {{name}}.",
@@ -715,7 +717,8 @@
     const loginMfaInput = document.getElementById('loginMfa');
     const accountRealBtn = document.getElementById('accountRealBtn');
     const accountDemoBtn = document.getElementById('accountDemoBtn');
-    const isDemoPage = window.location.pathname.endsWith('/demo.html');
+    const currentPath = window.location.pathname.toLowerCase();
+    const isDemoPage = currentPath.endsWith('/demo.html') || currentPath === '/demo' || currentPath === '/demo/';
 
     function resolveTranslation(lang, key) {
       const fallback = translations.en;
@@ -1659,6 +1662,7 @@
               : translate('subscription.aiUnlimited'))
           : translate('pricing.aiDisabled');
         const durationText = translate('pricing.duration', { days: plan.durationDays });
+        const billingText = translate('subscription.billingCycle', { days: plan.durationDays });
         const headerParts = [];
         const badges = [];
         const entStatus = (ent.status || '').toLowerCase();
@@ -1681,9 +1685,7 @@
             <div class="plan-price">${escapeHtml(formatUSD(plan.priceUSD))}<span>${escapeHtml(durationText)}</span></div>
           </div>
           <ul class="plan-feature-list">
-            <li>${escapeHtml(manualText)}</li>
-            <li>${escapeHtml(aiText)}</li>
-            <li>${escapeHtml(durationText)}</li>
+            ${[manualText, aiText, billingText].map(item => `<li>${escapeHtml(item)}</li>`).join('')}
           </ul>
         `;
         const actions = document.createElement('div');
@@ -2629,30 +2631,34 @@
     refreshOrdersBtn.addEventListener('click', () => loadOrders());
     refreshCompletedBtn.addEventListener('click', () => loadCompletedTrades());
     if (accountRealBtn) {
-      accountRealBtn.addEventListener('click', () => {
+      accountRealBtn.addEventListener('click', event => {
+        const target = accountRealBtn.getAttribute('href') || '/';
         if (isDemoPage) {
-          window.location.href = '/';
+          window.location.href = target;
           return;
         }
+        event.preventDefault();
         accountRealBtn.classList.add('is-active');
-        accountRealBtn.setAttribute('aria-pressed', 'true');
+        accountRealBtn.setAttribute('aria-selected', 'true');
         if (accountDemoBtn) {
           accountDemoBtn.classList.remove('is-active');
-          accountDemoBtn.setAttribute('aria-pressed', 'false');
+          accountDemoBtn.setAttribute('aria-selected', 'false');
         }
       });
     }
     if (accountDemoBtn) {
-      accountDemoBtn.addEventListener('click', () => {
+      accountDemoBtn.addEventListener('click', event => {
+        const target = accountDemoBtn.getAttribute('href') || '/demo.html';
         if (!isDemoPage) {
-          window.location.href = '/demo.html';
+          window.location.href = target;
           return;
         }
+        event.preventDefault();
         accountDemoBtn.classList.add('is-active');
-        accountDemoBtn.setAttribute('aria-pressed', 'true');
+        accountDemoBtn.setAttribute('aria-selected', 'true');
         if (accountRealBtn) {
           accountRealBtn.classList.remove('is-active');
-          accountRealBtn.setAttribute('aria-pressed', 'false');
+          accountRealBtn.setAttribute('aria-selected', 'false');
         }
       });
     }

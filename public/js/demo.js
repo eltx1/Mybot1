@@ -788,13 +788,22 @@
       });
     }
     if (accountRealBtn) {
-      accountRealBtn.addEventListener('click', () => {
-        window.location.href = '/';
+      accountRealBtn.addEventListener('click', event => {
+        const target = accountRealBtn.getAttribute('href') || '/';
+        const path = window.location.pathname.toLowerCase();
+        if (path.endsWith('/demo.html') || path === '/demo' || path === '/demo/') {
+          return;
+        }
+        event.preventDefault();
+        window.location.href = target;
       });
     }
     if (accountDemoBtn) {
       accountDemoBtn.classList.add('is-active');
-      accountDemoBtn.setAttribute('aria-pressed', 'true');
+      accountDemoBtn.setAttribute('aria-selected', 'true');
+      if (accountRealBtn) {
+        accountRealBtn.setAttribute('aria-selected', 'false');
+      }
     }
     if (manualForm) {
       manualForm.addEventListener('submit', handleManualSubmit);
