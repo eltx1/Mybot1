@@ -85,6 +85,10 @@
           real: "Real account",
           demo: "Demo account"
         },
+        accountSwitch: {
+          realSubtitle: "Live execution with your capital",
+          demoSubtitle: "Practice safely with virtual balance"
+        },
         api: {
           title: "Connect Binance keys",
           description: "Add your spot API credentials to activate the engine. Keys remain encrypted and you can revoke them any time.",
@@ -390,6 +394,10 @@
           real: "الحساب الحقيقي",
           demo: "الحساب التجريبي"
         },
+        accountSwitch: {
+          realSubtitle: "تنفيذ حقيقي بأموالك",
+          demoSubtitle: "تدرّب بأرصدة افتراضية بأمان"
+        },
         api: {
           title: "ربط مفاتيح Binance",
           description: "أضف مفاتيح السبوت الخاصة بك لتفعيل المحرك. تبقى المفاتيح مشفرة ويمكنك إزالتها في أي وقت.",
@@ -689,6 +697,7 @@
     const refreshOrdersBtn = document.getElementById('refreshOrders');
     const refreshCompletedBtn = document.getElementById('refreshCompletedTrades');
     const languageToggle = document.getElementById('languageToggle');
+    const pricingSection = document.getElementById('pricingSection');
     const pricingGrid = document.getElementById('pricingGrid');
     const dashboardPlansGrid = document.getElementById('dashboardPlans');
     const subscriptionStatus = document.getElementById('subscriptionStatus');
@@ -1731,6 +1740,16 @@
     }
 
     function renderPricingCards() {
+      if (!pricingGrid) return;
+      const dashboardVisible = dashboard && !dashboard.classList.contains('hidden');
+      const shouldShow = !state.token && !dashboardVisible;
+      if (pricingSection) {
+        pricingSection.classList.toggle('hidden', !shouldShow);
+      }
+      if (!shouldShow) {
+        pricingGrid.innerHTML = '';
+        return;
+      }
       renderPlanGrid(pricingGrid, 'landing');
     }
 

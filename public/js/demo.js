@@ -11,6 +11,10 @@
         real: 'Real account',
         demo: 'Demo account'
       },
+      accountSwitch: {
+        realSubtitle: 'Live execution with your capital',
+        demoSubtitle: 'Practice safely with virtual balance'
+      },
       demo: {
         title: 'Demo trading cockpit',
         subtitle: 'Preview manual and AI strategies with simulated balances. Everything here runs in training mode.',
@@ -100,6 +104,7 @@
           created: 'Demo rule created successfully.',
           generated: 'AI demo rule generated successfully.',
           deleted: 'Demo rule removed.',
+          completed: 'Completed',
           error: 'Something went wrong, please try again.'
         },
         buttons: {
@@ -117,6 +122,10 @@
       accounts: {
         real: 'الحساب الحقيقي',
         demo: 'الحساب التجريبي'
+      },
+      accountSwitch: {
+        realSubtitle: 'تنفيذ حقيقي بأموالك',
+        demoSubtitle: 'تدرّب بأرصدة افتراضية بأمان'
       },
       demo: {
         title: 'قمرة التداول التجريبية',
@@ -207,6 +216,7 @@
           created: 'تم إنشاء القاعدة التجريبية بنجاح.',
           generated: 'تم توليد قاعدة الذكاء الاصطناعي التجريبية بنجاح.',
           deleted: 'تم حذف القاعدة التجريبية.',
+          completed: 'مكتملة',
           error: 'حدث خطأ ما، حاول مرة أخرى.'
         },
         buttons: {
@@ -265,8 +275,8 @@
 
   const ordersRefreshBtn = document.getElementById('ordersDemoRefresh');
   const ordersTableBody = document.querySelector('#ordersDemoTable tbody');
-  const tradesRefreshBtn = document.getElementById('tradesDemoRefresh');
-  const tradesTableBody = document.querySelector('#tradesDemoTable tbody');
+  const completedRefreshBtn = document.getElementById('completedDemoRefresh');
+  const completedTableBody = document.querySelector('#completedDemoTable tbody');
   let statusTimer = null;
 
   function resolveTranslation(lang, key) {
@@ -353,7 +363,7 @@
   }
 
   function disableForms(disabled) {
-    const forms = [manualSubmitBtn, manualRefreshBtn, aiSubmitBtn, aiRefreshBtn, ordersRefreshBtn, tradesRefreshBtn];
+    const forms = [manualSubmitBtn, manualRefreshBtn, aiSubmitBtn, aiRefreshBtn, ordersRefreshBtn, completedRefreshBtn];
     forms.forEach(btn => {
       if (btn) {
         btn.disabled = disabled;
@@ -600,8 +610,8 @@
   }
 
   function renderTrades(trades) {
-    if (!tradesTableBody) return;
-    tradesTableBody.innerHTML = '';
+    if (!completedTableBody) return;
+    completedTableBody.innerHTML = '';
     if (!trades.length) {
       const row = document.createElement('tr');
       row.className = 'empty';
@@ -609,25 +619,25 @@
       cell.colSpan = 6;
       cell.textContent = translate('demo.table.tradesEmpty');
       row.appendChild(cell);
-      tradesTableBody.appendChild(row);
+      completedTableBody.appendChild(row);
       return;
     }
     trades.forEach(trade => {
       const row = document.createElement('tr');
       const entryPrice = formatNumber(trade.entryPrice, { maximumFractionDigits: 4 });
       const exitPrice = formatNumber(trade.exitPrice, { maximumFractionDigits: 4 });
-      const quantity = formatNumber(trade.quantity, { maximumFractionDigits: 4 });
       const profitPct = formatNumber(trade.profitPct, { maximumFractionDigits: 2 });
       const createdAt = formatTimestamp(trade.createdAt);
+      const statusLabel = trade.status ? String(trade.status) : translate('demo.status.completed');
       row.innerHTML = `
         <td>${escapeHtml(trade.assetSymbol)}</td>
         <td>${escapeHtml(entryPrice)}</td>
         <td>${escapeHtml(exitPrice)}</td>
-        <td>${escapeHtml(quantity)}</td>
         <td>${escapeHtml(formatCurrency(trade.profitUSD))} (${escapeHtml(profitPct)}%)</td>
         <td>${escapeHtml(createdAt)}</td>
+        <td>${escapeHtml(statusLabel)}</td>
       `;
-      tradesTableBody.appendChild(row);
+      completedTableBody.appendChild(row);
     });
 
     updateHighlights();
@@ -840,8 +850,8 @@
         loadOrders();
       });
     }
-    if (tradesRefreshBtn) {
-      tradesRefreshBtn.addEventListener('click', () => {
+    if (completedRefreshBtn) {
+      completedRefreshBtn.addEventListener('click', () => {
         loadTrades();
       });
     }
