@@ -242,6 +242,24 @@
     }
   };
 
+  const loginDestination = (() => {
+    const explicit = document.body?.getAttribute('data-login-url');
+    if (explicit) return explicit;
+    return '/';
+  })();
+
+  function redirectToLogin() {
+    try {
+      const target = new URL(loginDestination || '/', window.location.origin);
+      const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (current !== `${target.pathname}${target.search}${target.hash}`) {
+        window.location.replace(target.toString());
+      }
+    } catch (err) {
+      window.location.replace(loginDestination || '/');
+    }
+  }
+
   const languageToggle = document.getElementById('languageToggle');
   const accountRealBtn = document.getElementById('accountRealBtn');
   const accountDemoBtn = document.getElementById('accountDemoBtn');
@@ -359,6 +377,7 @@
     if (state.token) return false;
     disableForms(true);
     setStatus(translate('demo.status.loginRequired'), 'error');
+    redirectToLogin();
     return true;
   }
 
@@ -418,6 +437,7 @@
         setStatus(translate('demo.status.loginRequired'), 'error');
         state.timers.forEach(timer => clearInterval(timer));
         state.timers = [];
+        redirectToLogin();
         throw new Error('AUTH_REQUIRED');
       }
       const message = typeof data?.error === 'string' ? data.error : res.statusText;
