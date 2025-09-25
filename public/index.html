@@ -27,33 +27,82 @@
 
     <section class="hero" id="landing">
       <div class="hero-content">
-        <div>
+        <div class="hero-copy">
+          <span class="hero-badge" data-i18n="hero.badge">Autopilot 2.0 has landed</span>
           <h1 data-i18n="hero.title">Trade smarter with AI-assisted automation</h1>
           <p data-i18n="hero.subtitle">MY1 monitors the market in real time, suggests AI-powered strategies, and executes your spot rules with transparent controls.</p>
           <div class="hero-actions">
             <button class="btn primary" data-scroll-to-auth type="button" data-i18n="hero.primaryCta">Start now</button>
             <button class="btn secondary" type="button" data-scroll-to-auth data-i18n="hero.secondaryCta">See how it works</button>
           </div>
+          <div class="hero-stats">
+            <div class="hero-stat">
+              <span class="stat-value" data-i18n="hero.stat1Value">30+</span>
+              <span class="stat-label" data-i18n="hero.stat1Label">AI insights each week</span>
+            </div>
+            <div class="hero-stat">
+              <span class="stat-value" data-i18n="hero.stat2Value">120ms</span>
+              <span class="stat-label" data-i18n="hero.stat2Label">Average rule response</span>
+            </div>
+            <div class="hero-stat">
+              <span class="stat-value" data-i18n="hero.stat3Value">99.9%</span>
+              <span class="stat-label" data-i18n="hero.stat3Label">System uptime</span>
+            </div>
+          </div>
         </div>
-        <div class="features">
-          <article class="feature-card">
-            <h3 data-i18n="features.automationTitle">Personal rule engine</h3>
-            <p data-i18n="features.automationCopy">Define dip buying and take-profit logic with full transparency. Rules stay under your account control.</p>
-          </article>
-          <article class="feature-card">
-            <h3 data-i18n="features.securityTitle">Secure key management</h3>
-            <p data-i18n="features.securityCopy">Connect Binance spot keys with encryption. You are always able to rotate or disconnect in one click.</p>
-          </article>
-          <article class="feature-card">
-            <h3 data-i18n="features.aiTitle">AI market insights</h3>
-            <p data-i18n="features.aiCopy">Leverage live market research prompts to craft strategies backed by up-to-date data.</p>
-          </article>
+        <div class="hero-visual">
+          <div class="hero-visual-glow" aria-hidden="true"></div>
+          <div class="hero-preview">
+            <div class="hero-preview-header">
+              <span class="hero-preview-badge" data-i18n="hero.previewBadge">Realtime autopilot</span>
+              <span class="hero-preview-status" data-i18n="hero.previewStatus">Online</span>
+            </div>
+            <div class="hero-preview-title" data-i18n="hero.previewTitle">Automation timeline</div>
+            <ul class="hero-preview-list">
+              <li>
+                <span class="hero-preview-label" data-i18n="hero.previewItem1Title">Signal validated</span>
+                <p data-i18n="hero.previewItem1Copy">RSI &amp; MACD confirm SOLUSDT entry.</p>
+              </li>
+              <li>
+                <span class="hero-preview-label" data-i18n="hero.previewItem2Title">Risk managed</span>
+                <p data-i18n="hero.previewItem2Copy">Trailing stop adjusted by 1.2%.</p>
+              </li>
+              <li>
+                <span class="hero-preview-label" data-i18n="hero.previewItem3Title">Profit taken</span>
+                <p data-i18n="hero.previewItem3Copy">Partial exit captured at +3.4%.</p>
+              </li>
+            </ul>
+          </div>
+          <div class="hero-feature-grid">
+            <article class="feature-card">
+              <span class="feature-icon" aria-hidden="true">⚙️</span>
+              <div class="feature-content">
+                <h3 data-i18n="features.automationTitle">Personal rule engine</h3>
+                <p data-i18n="features.automationCopy">Define dip buying and take-profit logic with full transparency. Rules stay under your account control.</p>
+              </div>
+            </article>
+            <article class="feature-card">
+              <span class="feature-icon" aria-hidden="true">🔐</span>
+              <div class="feature-content">
+                <h3 data-i18n="features.securityTitle">Secure key management</h3>
+                <p data-i18n="features.securityCopy">Connect Binance spot keys with encryption. You are always able to rotate or disconnect in one click.</p>
+              </div>
+            </article>
+            <article class="feature-card">
+              <span class="feature-icon" aria-hidden="true">🤖</span>
+              <div class="feature-content">
+                <h3 data-i18n="features.aiTitle">AI market insights</h3>
+                <p data-i18n="features.aiCopy">Leverage live market research prompts to craft strategies backed by up-to-date data.</p>
+              </div>
+            </article>
+          </div>
         </div>
       </div>
     </section>
 
     <section class="pricing" id="pricingSection">
       <div class="pricing-inner">
+        <span class="section-kicker" data-i18n="pricing.kicker">Flexible plans</span>
         <h2 data-i18n="pricing.title">Plans built for every trader</h2>
         <p class="muted" data-i18n="pricing.subtitle">Unlock manual or AI-powered automation by choosing the package that matches your strategy.</p>
         <div class="pricing-grid" id="pricingGrid"></div>
@@ -426,6 +475,11 @@
         <div class="completed-trades-list" id="completedTradesList"></div>
       </section>
     </main>
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <p data-i18n="footer.copy">© 2024 MY1 Automation. Built for serious spot traders.</p>
+      </div>
+    </footer>
   </div>
 
   <script type="module" src="/js/app.js"></script>
