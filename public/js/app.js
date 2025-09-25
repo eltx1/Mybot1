@@ -9,10 +9,26 @@
           demoCta: "Back to real account"
         },
         hero: {
+          badge: "Autopilot 2.0 has landed",
           title: "Trade smarter with AI-assisted automation",
           subtitle: "MY1 monitors the market in real time, suggests AI-powered strategies, and executes your spot rules with transparent controls.",
           primaryCta: "Start now",
-          secondaryCta: "See how it works"
+          secondaryCta: "See how it works",
+          stat1Value: "30+",
+          stat1Label: "AI insights each week",
+          stat2Value: "120ms",
+          stat2Label: "Average rule response",
+          stat3Value: "99.9%",
+          stat3Label: "System uptime",
+          previewBadge: "Realtime autopilot",
+          previewStatus: "Online",
+          previewTitle: "Automation timeline",
+          previewItem1Title: "Signal validated",
+          previewItem1Copy: "RSI & MACD confirm SOLUSDT entry.",
+          previewItem2Title: "Risk managed",
+          previewItem2Copy: "Trailing stop adjusted by 1.2%.",
+          previewItem3Title: "Profit taken",
+          previewItem3Copy: "Partial exit captured at +3.4%."
         },
         features: {
           automationTitle: "Personal rule engine",
@@ -23,6 +39,7 @@
           aiCopy: "Leverage live market research prompts to craft strategies backed by up-to-date data."
         },
         pricing: {
+          kicker: "Flexible plans",
           title: "Plans built for every trader",
           subtitle: "Unlock manual or AI-powered automation by choosing the package that matches your strategy.",
           manualFeature: "Manual rules: {{count}} active",
@@ -31,6 +48,9 @@
           manualOnly: "Manual automation included",
           duration: "{{days}} day subscription",
           price: "${{price}}"
+        },
+        footer: {
+          copy: "© 2024 MY1 Automation. Built for serious spot traders."
         },
         auth: {
           title: "Your personal trading cockpit",
@@ -286,10 +306,26 @@
           demoCta: "العودة للحساب الحقيقي"
         },
         hero: {
+          badge: "إطلاق Autopilot 2.0",
           title: "تداول بذكاء مع أتمتة مدعومة بالذكاء الاصطناعي",
           subtitle: "تراقب MY1 السوق لحظيًا، وتقترح استراتيجيات مدعومة بالذكاء الاصطناعي، وتنفذ قواعدك بوضوح كامل.",
           primaryCta: "ابدأ الآن",
-          secondaryCta: "تعرّف على آلية العمل"
+          secondaryCta: "تعرّف على آلية العمل",
+          stat1Value: "30+",
+          stat1Label: "أفكار ذكاء اصطناعي أسبوعيًا",
+          stat2Value: "120 مللي",
+          stat2Label: "متوسط استجابة القواعد",
+          stat3Value: "99.9%",
+          stat3Label: "جاهزية النظام",
+          previewBadge: "أتمتة فورية",
+          previewStatus: "نشط",
+          previewTitle: "الخط الزمني للأتمتة",
+          previewItem1Title: "تم تأكيد الإشارة",
+          previewItem1Copy: "أكد RSI وMACD الدخول على SOLUSDT.",
+          previewItem2Title: "إدارة المخاطر",
+          previewItem2Copy: "تم تعديل الوقف المتحرك بنسبة 1.2٪.",
+          previewItem3Title: "تحقق الربح",
+          previewItem3Copy: "تنفيذ جني جزئي عند +3.4٪."
         },
         features: {
           automationTitle: "محرك قواعد شخصي",
@@ -300,6 +336,7 @@
           aiCopy: "استفد من برومبتات بحث مباشرة لصياغة استراتيجيات مبنية على بيانات محدثة."
         },
         pricing: {
+          kicker: "خطط مرنة",
           title: "خطط تناسب كل متداول",
           subtitle: "اختر الباقة التي تناسب استراتيجيتك لتفعيل القواعد اليدوية أو الذكاء الاصطناعي.",
           manualFeature: "القواعد اليدوية: {{count}} مفعلة",
@@ -308,6 +345,9 @@
           manualOnly: "تشمل القواعد اليدوية",
           duration: "اشتراك لمدة {{days}} يوم",
           price: "{{price}} دولار"
+        },
+        footer: {
+          copy: "© 2024 MY1 Automation. صُممت للمتداولين المحترفين."
         },
         auth: {
           title: "قمرة القيادة الخاصة بك",
@@ -364,7 +404,7 @@
           trailingPlaceholder: "اختياري",
           partialsLabel: "أهداف جني ربح جزئية",
           partialsPlaceholder: "50@2,50@5",
-          partialsHint: "اكتب النسبة@الهدف، مثال: ‎50@2‎ تعني بيع 50٪ عند +2٪.",
+          partialsHint: "اكتب النسبة@الهدف، مثال: 50@2 تعني بيع 50٪ عند +2٪.",
           indicatorsTitle: "مرشحات المؤشرات (اختياري)",
           indicatorInterval: "الإطار الزمني للمؤشرات",
           indicatorRsiPeriod: "فترة مؤشر RSI",
