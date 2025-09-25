@@ -39,6 +39,8 @@ app.use(express.json({
   }
 }));
 
+const STATIC_CACHE_SECONDS = Math.max(60, Number(process.env.STATIC_CACHE_SECONDS || 300));
+
 const loginLimiter = rateLimit({
   windowMs: Math.max(30000, Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS || 60000)),
   max: Math.max(5, Number(process.env.LOGIN_RATE_LIMIT_MAX || 10)),
@@ -4006,7 +4008,20 @@ app.post("/webhooks/cryptomus", async (req, res) => {
   res.json({ received: true });
 });
 
-app.use("/", express.static(path.join(__dirname, "public")));
+app.use("/", express.static(path.join(__dirname, "public"), {
+  setHeaders: (res, filePath) => {
+    if (/\.html$/i.test(filePath)) {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+      res.setHeader("Surrogate-Control", "no-store");
+    } else if (/\.(?:js|css|json|png|jpe?g|gif|svg|webp|ico|woff2?|ttf)$/i.test(filePath)) {
+      res.setHeader("Cache-Control", `public, max-age=${STATIC_CACHE_SECONDS}, must-revalidate`);
+    } else {
+      res.setHeader("Cache-Control", "no-store");
+    }
+  }
+}));
 
 const PORT = process.env.PORT || 8080;
 

@@ -15,6 +15,20 @@
         title: 'Demo trading cockpit',
         subtitle: 'Preview manual and AI strategies with simulated balances. Everything here runs in training mode.',
         badge: 'Preloaded',
+        highlight: {
+          manualLabel: 'Manual strategies',
+          manualMeta: '{{count}} active in sandbox',
+          manualEmpty: 'Create your first demo rule',
+          aiLabel: 'AI strategies',
+          aiMeta: '{{count}} AI rules generated',
+          aiEmpty: 'No AI rules yet',
+          ordersLabel: 'Open orders',
+          ordersMeta: '{{count}} queued',
+          ordersEmpty: 'No demo orders yet',
+          tradesLabel: 'Completed trades',
+          tradesMeta: '{{count}} closed cycles',
+          tradesEmpty: 'No demo trades yet'
+        },
         infoTitle: 'What is demo mode?',
         infoBody: 'Use the demo workspace to explore how MY1 behaves without connecting your exchange.',
         infoPoint1: 'No subscription is required — demo mode is unlocked for every user.',
@@ -108,6 +122,20 @@
         title: 'قمرة التداول التجريبية',
         subtitle: 'استكشف القواعد اليدوية والذكاء الاصطناعي بأرصدة افتراضية. كل شيء هنا يعمل في وضع التدريب.',
         badge: 'افتراضي',
+        highlight: {
+          manualLabel: 'استراتيجيات يدوية',
+          manualMeta: '{{count}} استراتيجية فعالة',
+          manualEmpty: 'ابدأ بإضافة قاعدة تجريبية',
+          aiLabel: 'استراتيجيات الذكاء الاصطناعي',
+          aiMeta: '{{count}} قاعدة ذكاء اصطناعي جاهزة',
+          aiEmpty: 'لا توجد قواعد ذكاء اصطناعي بعد',
+          ordersLabel: 'أوامر مفتوحة',
+          ordersMeta: '{{count}} في قائمة الانتظار',
+          ordersEmpty: 'لا توجد أوامر تجريبية بعد',
+          tradesLabel: 'صفقات مكتملة',
+          tradesMeta: '{{count}} دورة منتهية',
+          tradesEmpty: 'لا توجد صفقات تجريبية مكتملة بعد'
+        },
         infoTitle: 'ما هو الوضع التجريبي؟',
         infoBody: 'استخدم مساحة العمل التجريبية لمعرفة كيفية عمل MY1 بدون ربط منصتك.',
         infoPoint1: 'لا حاجة لأي اشتراك — الوضع التجريبي متاح للجميع.',
@@ -208,6 +236,14 @@
   const accountRealBtn = document.getElementById('accountRealBtn');
   const accountDemoBtn = document.getElementById('accountDemoBtn');
   const statusEl = document.getElementById('demoStatus');
+  const manualHighlightValue = document.getElementById('demoManualHighlight');
+  const manualHighlightMeta = document.getElementById('demoManualMeta');
+  const aiHighlightValue = document.getElementById('demoAiHighlight');
+  const aiHighlightMeta = document.getElementById('demoAiMeta');
+  const ordersHighlightValue = document.getElementById('demoOrdersHighlight');
+  const ordersHighlightMeta = document.getElementById('demoOrdersMeta');
+  const tradesHighlightValue = document.getElementById('demoTradesHighlight');
+  const tradesHighlightMeta = document.getElementById('demoTradesMeta');
   const manualForm = document.getElementById('manualDemoForm');
   const manualSubmitBtn = document.getElementById('manualDemoSubmit');
   const manualRefreshBtn = document.getElementById('manualDemoRefresh');
@@ -292,6 +328,8 @@
         el.textContent = text;
       }
     });
+
+    updateHighlights();
   }
 
   function setStatus(message, type = 'info') {
@@ -408,6 +446,49 @@
     return date.toLocaleString();
   }
 
+  function updateHighlights() {
+    const manualCount = state.rules.filter(rule => rule.type === 'manual').length;
+    const aiCount = state.rules.filter(rule => rule.type === 'ai').length;
+    const ordersCount = state.orders.length;
+    const tradesCount = state.trades.length;
+
+    if (manualHighlightValue) {
+      manualHighlightValue.textContent = manualCount;
+    }
+    if (manualHighlightMeta) {
+      manualHighlightMeta.textContent = manualCount
+        ? translate('demo.highlight.manualMeta', { count: manualCount })
+        : translate('demo.highlight.manualEmpty');
+    }
+
+    if (aiHighlightValue) {
+      aiHighlightValue.textContent = aiCount;
+    }
+    if (aiHighlightMeta) {
+      aiHighlightMeta.textContent = aiCount
+        ? translate('demo.highlight.aiMeta', { count: aiCount })
+        : translate('demo.highlight.aiEmpty');
+    }
+
+    if (ordersHighlightValue) {
+      ordersHighlightValue.textContent = ordersCount;
+    }
+    if (ordersHighlightMeta) {
+      ordersHighlightMeta.textContent = ordersCount
+        ? translate('demo.highlight.ordersMeta', { count: ordersCount })
+        : translate('demo.highlight.ordersEmpty');
+    }
+
+    if (tradesHighlightValue) {
+      tradesHighlightValue.textContent = tradesCount;
+    }
+    if (tradesHighlightMeta) {
+      tradesHighlightMeta.textContent = tradesCount
+        ? translate('demo.highlight.tradesMeta', { count: tradesCount })
+        : translate('demo.highlight.tradesEmpty');
+    }
+  }
+
   function renderManualRules(rules) {
     if (!manualTableBody) return;
     manualTableBody.innerHTML = '';
@@ -514,6 +595,8 @@
       `;
       ordersTableBody.appendChild(row);
     });
+
+    updateHighlights();
   }
 
   function renderTrades(trades) {
@@ -546,6 +629,8 @@
       `;
       tradesTableBody.appendChild(row);
     });
+
+    updateHighlights();
   }
 
   function renderAll() {
