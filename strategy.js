@@ -9,6 +9,25 @@ const MAX_PROCESSED_TRADE_IDS = 50;
 const BUY_PRICE_DRIFT_THRESHOLD = 0.35;
 const SELL_PRICE_DRIFT_THRESHOLD = 0.5;
 const TRAILING_UPDATE_THRESHOLD = 0.1;
+const DEFAULT_INDICATOR_INTERVAL = "15m";
+const DEFAULT_RSI_PERIOD = 14;
+const DEFAULT_MACD_FAST = 12;
+const DEFAULT_MACD_SLOW = 26;
+const DEFAULT_MACD_SIGNAL = 9;
+const INDICATOR_INTERVALS = new Set([
+  "1m",
+  "3m",
+  "5m",
+  "15m",
+  "30m",
+  "1h",
+  "2h",
+  "4h",
+  "6h",
+  "8h",
+  "12h",
+  "1d"
+]);
 
 export function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -26,6 +45,192 @@ function roundToTick(price, tick) {
   const s = tick.toString();
   const decimals = s.includes(".") ? (s.length - s.indexOf(".") - 1) : 0;
   return Number(n.toFixed(decimals));
+}
+
+function clampNumber(value, min, max) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  const bounded = Math.max(min, Math.min(max, num));
+  return bounded;
+}
+
+function clampInteger(value, min, max) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  const rounded = Math.round(num);
+  const bounded = Math.max(min, Math.min(max, rounded));
+  return bounded;
+}
+
+function parseIndicatorSettings(rule) {
+  const raw = rule?.indicatorSettings;
+  if (!raw || typeof raw !== "object") return null;
+  const interval = INDICATOR_INTERVALS.has(String(raw.interval || "").toLowerCase())
+    ? String(raw.interval).toLowerCase()
+    : DEFAULT_INDICATOR_INTERVAL;
+  const rsiPeriod = clampInteger(raw.rsiPeriod, 2, 100) ?? DEFAULT_RSI_PERIOD;
+  const macdFast = clampInteger(raw.macdFast, 1, 200) ?? DEFAULT_MACD_FAST;
+  let macdSlow = clampInteger(raw.macdSlow, macdFast + 1, 300) ?? DEFAULT_MACD_SLOW;
+  if (macdSlow <= macdFast) macdSlow = macdFast + 1;
+  const macdSignal = clampInteger(raw.macdSignal, 1, 100) ?? DEFAULT_MACD_SIGNAL;
+  const settings = {
+    interval,
+    rsiPeriod,
+    macdFast,
+    macdSlow,
+    macdSignal
+  };
+  const entryMax = clampNumber(raw.rsiEntryMax, 0, 100);
+  if (entryMax !== null && entryMax > 0) {
+    settings.rsiEntryMax = Number(entryMax.toFixed(2));
+  }
+  const exitMin = clampNumber(raw.rsiExitMin, 0, 100);
+  if (exitMin !== null && exitMin > 0) {
+    settings.rsiExitMin = Number(exitMin.toFixed(2));
+  }
+  const entryTrendRaw = typeof raw.macdEntry === "string" ? raw.macdEntry.toLowerCase() : "";
+  if (entryTrendRaw === "bullish" || entryTrendRaw === "bearish") {
+    settings.macdEntry = entryTrendRaw;
+  }
+  const exitTrendRaw = typeof raw.macdExit === "string" ? raw.macdExit.toLowerCase() : "";
+  if (exitTrendRaw === "bullish" || exitTrendRaw === "bearish") {
+    settings.macdExit = exitTrendRaw;
+  }
+  const hasConditions = settings.rsiEntryMax !== undefined
+    || settings.rsiExitMin !== undefined
+    || settings.macdEntry !== undefined
+    || settings.macdExit !== undefined;
+  return hasConditions ? settings : null;
+}
+
+function requiresEntryIndicators(settings) {
+  return Boolean(settings && (settings.rsiEntryMax !== undefined || settings.macdEntry));
+}
+
+function requiresExitIndicators(settings) {
+  return Boolean(settings && (settings.rsiExitMin !== undefined || settings.macdExit));
+}
+
+function calculateRsi(values, period) {
+  if (!Array.isArray(values) || values.length <= period) return null;
+  const closes = values.map(Number).filter(v => Number.isFinite(v));
+  if (closes.length <= period) return null;
+  let gains = 0;
+  let losses = 0;
+  for (let i = 1; i <= period; i += 1) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff >= 0) gains += diff;
+    else losses += Math.abs(diff);
+  }
+  let averageGain = gains / period;
+  let averageLoss = losses / period;
+  for (let i = period + 1; i < closes.length; i += 1) {
+    const diff = closes[i] - closes[i - 1];
+    const gain = diff > 0 ? diff : 0;
+    const loss = diff < 0 ? Math.abs(diff) : 0;
+    averageGain = ((averageGain * (period - 1)) + gain) / period;
+    averageLoss = ((averageLoss * (period - 1)) + loss) / period;
+  }
+  if (averageLoss === 0) return 100;
+  const rs = averageGain / averageLoss;
+  if (!Number.isFinite(rs)) return null;
+  const rsi = 100 - (100 / (1 + rs));
+  return Number(rsi.toFixed(2));
+}
+
+function calculateMacd(values, fastPeriod, slowPeriod, signalPeriod) {
+  if (!Array.isArray(values) || values.length < slowPeriod + signalPeriod) return null;
+  const closes = values.map(Number).filter(v => Number.isFinite(v));
+  if (closes.length < slowPeriod + signalPeriod) return null;
+  const fastK = 2 / (fastPeriod + 1);
+  const slowK = 2 / (slowPeriod + 1);
+  const signalK = 2 / (signalPeriod + 1);
+  let fastEma = closes.slice(0, fastPeriod).reduce((sum, v) => sum + v, 0) / fastPeriod;
+  let slowEma = closes.slice(0, slowPeriod).reduce((sum, v) => sum + v, 0) / slowPeriod;
+  for (let i = fastPeriod; i < slowPeriod; i += 1) {
+    fastEma = closes[i] * fastK + fastEma * (1 - fastK);
+  }
+  const macdValues = [];
+  for (let i = slowPeriod; i < closes.length; i += 1) {
+    fastEma = closes[i] * fastK + fastEma * (1 - fastK);
+    slowEma = closes[i] * slowK + slowEma * (1 - slowK);
+    macdValues.push(fastEma - slowEma);
+  }
+  if (macdValues.length < signalPeriod) return null;
+  let signalEma = macdValues.slice(0, signalPeriod).reduce((sum, v) => sum + v, 0) / signalPeriod;
+  for (let i = signalPeriod; i < macdValues.length; i += 1) {
+    signalEma = macdValues[i] * signalK + signalEma * (1 - signalK);
+  }
+  const macdLine = macdValues[macdValues.length - 1];
+  const histogram = macdLine - signalEma;
+  return {
+    macd: Number(macdLine.toFixed(6)),
+    signal: Number(signalEma.toFixed(6)),
+    histogram: Number(histogram.toFixed(6))
+  };
+}
+
+async function loadIndicatorSnapshot(binance, caches, symbol, settings) {
+  if (!settings) return null;
+  const interval = settings.interval || DEFAULT_INDICATOR_INTERVAL;
+  const limit = Math.max(100, settings.macdSlow + settings.macdSignal + 5, settings.rsiPeriod + 5);
+  const key = `${symbol}:${interval}:${limit}`;
+  if (!Object.prototype.hasOwnProperty.call(caches.candles, key)) {
+    try {
+      caches.candles[key] = await binance.klines(symbol, interval, limit);
+    } catch (err) {
+      console.error(`[ENGINE] klines error for ${symbol} ${interval}:`, err?.message || err);
+      caches.candles[key] = null;
+    }
+  }
+  const rows = caches.candles[key];
+  if (!Array.isArray(rows)) return null;
+  const closes = rows
+    .map(row => (Array.isArray(row) ? Number(row[4]) : Number(row?.close)))
+    .filter(v => Number.isFinite(v) && v > 0);
+  if (closes.length < 5) return null;
+  const snapshot = {};
+  if (settings.rsiEntryMax !== undefined || settings.rsiExitMin !== undefined) {
+    const rsi = calculateRsi(closes, settings.rsiPeriod);
+    if (rsi !== null) snapshot.rsi = rsi;
+  }
+  if (settings.macdEntry || settings.macdExit) {
+    const macd = calculateMacd(closes, settings.macdFast, settings.macdSlow, settings.macdSignal);
+    if (macd) snapshot.macd = macd;
+  }
+  return Object.keys(snapshot).length ? snapshot : null;
+}
+
+function entryIndicatorsAllow(settings, snapshot) {
+  if (!settings) return true;
+  if (settings.rsiEntryMax !== undefined) {
+    if (!snapshot || !Number.isFinite(snapshot?.rsi)) return false;
+    if (!(snapshot.rsi <= settings.rsiEntryMax + 1e-8)) return false;
+  }
+  if (settings.macdEntry) {
+    if (!snapshot?.macd) return false;
+    const { macd, signal } = snapshot.macd;
+    if (!Number.isFinite(macd) || !Number.isFinite(signal)) return false;
+    if (settings.macdEntry === "bullish" && !(macd > signal)) return false;
+    if (settings.macdEntry === "bearish" && !(macd < signal)) return false;
+  }
+  return true;
+}
+
+function exitIndicatorsAllow(settings, snapshot) {
+  if (!settings) return true;
+  if (settings.rsiExitMin !== undefined) {
+    if (!snapshot || !Number.isFinite(snapshot?.rsi)) return false;
+    if (!(snapshot.rsi >= settings.rsiExitMin - 1e-8)) return false;
+  }
+  if (settings.macdExit) {
+    if (!snapshot?.macd) return false;
+    const { macd, signal } = snapshot.macd;
+    if (!Number.isFinite(macd) || !Number.isFinite(signal)) return false;
+    if (settings.macdExit === "bullish" && !(macd > signal)) return false;
+    if (settings.macdExit === "bearish" && !(macd < signal)) return false;
+  }
+  return true;
 }
 
 function makeClientOrderId(rule, side, suffix = "") {
@@ -278,10 +483,20 @@ async function cancelOrder(binance, symbol, order) {
   }
 }
 
-async function ensureTakeProfitOrders({ binance, symbol, rule, state, orders, filters, caches, clearIssue }) {
+async function ensureTakeProfitOrders({ binance, symbol, rule, state, orders, filters, caches, clearIssue, allowPlacement = true }) {
   if (!Array.isArray(state.takeProfitPlan)) return;
   const minQty = Math.max(filters.minQty, filters.stepSize);
   const prefix = makeClientOrderId(rule, "SELL");
+  if (!allowPlacement) {
+    for (const order of orders) {
+      if (order.side !== "SELL") continue;
+      if (typeof order.clientOrderId !== "string") continue;
+      if (!order.clientOrderId.startsWith(prefix)) continue;
+      await cancelOrder(binance, symbol, order);
+      caches.orders[symbol] = null;
+    }
+    return;
+  }
   for (const step of state.takeProfitPlan) {
     const clientId = step.clientOrderId || makeClientOrderId(rule, "SELL", `${TP_ID_PREFIX}${step.id || 1}`);
     step.clientOrderId = clientId;
@@ -450,6 +665,16 @@ async function processRule({ binance, rule, caches, userId, hooks, stateManager 
   const budget = Number(rule.budgetUSDT);
   if (!(budget > 0)) return;
 
+  const indicatorSettings = type === "manual" ? parseIndicatorSettings(rule) : null;
+  let indicatorSnapshot = null;
+  const getIndicatorSnapshot = async () => {
+    if (!indicatorSettings) return null;
+    if (!indicatorSnapshot) {
+      indicatorSnapshot = await loadIndicatorSnapshot(binance, caches, symbol, indicatorSettings);
+    }
+    return indicatorSnapshot;
+  };
+
   if (!caches.filter[symbol]) {
     try {
       caches.filter[symbol] = await getFilters(binance, symbol);
@@ -507,6 +732,17 @@ async function processRule({ binance, rule, caches, userId, hooks, stateManager 
       buyOrder = null;
     }
   } else {
+    if (indicatorSettings && requiresEntryIndicators(indicatorSettings)) {
+      const snapshot = await getIndicatorSnapshot();
+      if (!entryIndicatorsAllow(indicatorSettings, snapshot)) {
+        if (buyOrder) {
+          await cancelOrder(binance, symbol, buyOrder);
+          caches.orders[symbol] = null;
+          buyOrder = null;
+        }
+        return;
+      }
+    }
     if (!buyOrder) {
       try {
         await binance.placeLimit(symbol, "BUY", qty, buyTarget, { makerOnly: MAKER_ONLY, clientOrderId: buyClientId });
@@ -605,7 +841,22 @@ async function processRule({ binance, rule, caches, userId, hooks, stateManager 
   }
 
   const refreshedOrders = await getOrders(caches, binance, symbol);
-  await ensureTakeProfitOrders({ binance, symbol, rule, state, orders: refreshedOrders, filters, caches, clearIssue });
+  let exitIndicatorsOk = true;
+  if (state?.active && indicatorSettings && requiresExitIndicators(indicatorSettings)) {
+    const snapshot = indicatorSnapshot || await getIndicatorSnapshot();
+    exitIndicatorsOk = snapshot ? exitIndicatorsAllow(indicatorSettings, snapshot) : true;
+  }
+  await ensureTakeProfitOrders({
+    binance,
+    symbol,
+    rule,
+    state,
+    orders: refreshedOrders,
+    filters,
+    caches,
+    clearIssue,
+    allowPlacement: exitIndicatorsOk
+  });
   await ensureStopOrder({ binance, symbol, rule, state, orders: refreshedOrders, filters, caches });
   await stateManager.save(rule.id, state);
 }
@@ -618,7 +869,8 @@ async function processSnapshot(snapshot, context) {
     price: {},
     filter: {},
     orders: {},
-    trades: {}
+    trades: {},
+    candles: {}
   };
 
   for (const rawRule of rules) {

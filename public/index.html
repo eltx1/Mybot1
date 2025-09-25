@@ -255,6 +255,70 @@
               <input id="partials" data-i18n-placeholder="manual.partialsPlaceholder" placeholder="50@2,50@5">
               <p class="muted small" data-i18n="manual.partialsHint">Format: percentage@target, for example 50@2 means sell 50% at +2%.</p>
             </div>
+            <div class="form-section">
+              <h3 data-i18n="manual.indicatorsTitle">Indicator filters (optional)</h3>
+              <div class="form-row">
+                <div>
+                  <label for="indicatorInterval" data-i18n="manual.indicatorInterval">Indicator timeframe</label>
+                  <select id="indicatorInterval">
+                    <option value="15m" selected>15m</option>
+                    <option value="5m">5m</option>
+                    <option value="1h">1h</option>
+                    <option value="4h">4h</option>
+                    <option value="1d">1d</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="indicatorRsiPeriod" data-i18n="manual.indicatorRsiPeriod">RSI period</label>
+                  <input id="indicatorRsiPeriod" type="number" min="2" max="100" step="1" value="14">
+                </div>
+              </div>
+              <div class="form-row">
+                <div>
+                  <label for="indicatorRsiEntry" data-i18n="manual.indicatorRsiEntry">Max RSI for entry</label>
+                  <input id="indicatorRsiEntry" type="number" min="0" max="100" step="0.1" placeholder="30">
+                </div>
+                <div>
+                  <label for="indicatorRsiExit" data-i18n="manual.indicatorRsiExit">Min RSI for exit</label>
+                  <input id="indicatorRsiExit" type="number" min="0" max="100" step="0.1" placeholder="70">
+                </div>
+              </div>
+              <div class="form-row">
+                <div>
+                  <label for="indicatorMacdFast" data-i18n="manual.indicatorMacdFast">MACD fast length</label>
+                  <input id="indicatorMacdFast" type="number" min="1" max="200" step="1" value="12">
+                </div>
+                <div>
+                  <label for="indicatorMacdSlow" data-i18n="manual.indicatorMacdSlow">MACD slow length</label>
+                  <input id="indicatorMacdSlow" type="number" min="2" max="300" step="1" value="26">
+                </div>
+              </div>
+              <div class="form-row">
+                <div>
+                  <label for="indicatorMacdSignal" data-i18n="manual.indicatorMacdSignal">MACD signal length</label>
+                  <input id="indicatorMacdSignal" type="number" min="1" max="100" step="1" value="9">
+                </div>
+                <div>
+                  <label for="indicatorMacdEntry" data-i18n="manual.indicatorMacdEntry">MACD entry filter</label>
+                  <select id="indicatorMacdEntry">
+                    <option value="none" selected data-i18n="manual.indicatorMacdNone">No filter</option>
+                    <option value="bullish" data-i18n="manual.indicatorMacdBullish">Bullish crossover</option>
+                    <option value="bearish" data-i18n="manual.indicatorMacdBearish">Bearish crossover</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-row">
+                <div>
+                  <label for="indicatorMacdExit" data-i18n="manual.indicatorMacdExit">MACD exit filter</label>
+                  <select id="indicatorMacdExit">
+                    <option value="none" selected data-i18n="manual.indicatorMacdNone">No filter</option>
+                    <option value="bullish" data-i18n="manual.indicatorMacdBullish">Bullish crossover</option>
+                    <option value="bearish" data-i18n="manual.indicatorMacdBearish">Bearish crossover</option>
+                  </select>
+                </div>
+              </div>
+              <p class="muted small" data-i18n="manual.indicatorsHint">RSI and MACD filters are optional. Leave fields empty to ignore them.</p>
+            </div>
             <div class="actions">
               <button class="btn primary" type="submit" data-i18n="manual.add">Add rule</button>
               <button class="btn ghost" type="button" id="syncRules" data-i18n="manual.sync">Sync with engine</button>

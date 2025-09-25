@@ -705,6 +705,7 @@ async function initDb() {
         stop_loss_pct DECIMAL(18,8) DEFAULT NULL,
         trailing_stop_pct DECIMAL(18,8) DEFAULT NULL,
         take_profit_steps LONGTEXT DEFAULT NULL,
+        indicator_settings LONGTEXT DEFAULT NULL,
         entry_price DECIMAL(18,8) DEFAULT NULL,
         exit_price DECIMAL(18,8) DEFAULT NULL,
         budget_usdt DECIMAL(18,8) NOT NULL DEFAULT 0,
@@ -2196,6 +2197,80 @@ async function activateSubscription(reference, overrides = {}) {
   return findSubscriptionByReference(reference);
 }
 
+const ALLOWED_INDICATOR_INTERVALS = new Set([
+  "1m",
+  "3m",
+  "5m",
+  "15m",
+  "30m",
+  "1h",
+  "2h",
+  "4h",
+  "6h",
+  "8h",
+  "12h",
+  "1d"
+]);
+const DEFAULT_INDICATOR_INTERVAL = "15m";
+const DEFAULT_RSI_PERIOD = 14;
+const DEFAULT_MACD_FAST = 12;
+const DEFAULT_MACD_SLOW = 26;
+const DEFAULT_MACD_SIGNAL = 9;
+
+function normalizeIndicatorSettings(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const toInt = (value, min, max, fallback) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return fallback;
+    const rounded = Math.round(num);
+    if (rounded < min) return min;
+    if (rounded > max) return max;
+    return rounded;
+  };
+  const toBounded = (value, min, max) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return null;
+    if (num < min) return min;
+    if (num > max) return max;
+    return Number(num.toFixed(2));
+  };
+  const intervalRaw = String(raw.interval || "").toLowerCase();
+  const interval = ALLOWED_INDICATOR_INTERVALS.has(intervalRaw) ? intervalRaw : DEFAULT_INDICATOR_INTERVAL;
+  const rsiPeriod = toInt(raw.rsiPeriod, 2, 100, DEFAULT_RSI_PERIOD);
+  const macdFast = toInt(raw.macdFast, 1, 200, DEFAULT_MACD_FAST);
+  let macdSlow = toInt(raw.macdSlow, macdFast + 1, 300, DEFAULT_MACD_SLOW);
+  if (macdSlow <= macdFast) macdSlow = macdFast + 1;
+  const macdSignal = toInt(raw.macdSignal, 1, 100, DEFAULT_MACD_SIGNAL);
+  const settings = {
+    interval,
+    rsiPeriod,
+    macdFast,
+    macdSlow,
+    macdSignal
+  };
+  const rsiEntry = toBounded(raw.rsiEntryMax, 0, 100);
+  if (rsiEntry !== null && rsiEntry > 0) {
+    settings.rsiEntryMax = rsiEntry;
+  }
+  const rsiExit = toBounded(raw.rsiExitMin, 0, 100);
+  if (rsiExit !== null && rsiExit > 0) {
+    settings.rsiExitMin = rsiExit;
+  }
+  const entryTrendRaw = typeof raw.macdEntry === "string" ? raw.macdEntry.toLowerCase() : "";
+  if (entryTrendRaw === "bullish" || entryTrendRaw === "bearish") {
+    settings.macdEntry = entryTrendRaw;
+  }
+  const exitTrendRaw = typeof raw.macdExit === "string" ? raw.macdExit.toLowerCase() : "";
+  if (exitTrendRaw === "bullish" || exitTrendRaw === "bearish") {
+    settings.macdExit = exitTrendRaw;
+  }
+  const hasConditions = settings.rsiEntryMax !== undefined
+    || settings.rsiExitMin !== undefined
+    || settings.macdEntry !== undefined
+    || settings.macdExit !== undefined;
+  return hasConditions ? settings : null;
+}
+
 function normalizeTakeProfitSteps(input, fallbackPct) {
   const steps = [];
   const source = Array.isArray(input) ? input : [];
@@ -2313,6 +2388,16 @@ function normalizeRules(input) {
         if (rule.tpPct !== 0) mutated = true;
         rule.tpPct = 0;
       }
+      const indicators = normalizeIndicatorSettings(rule.indicatorSettings);
+      if (indicators) {
+        if (JSON.stringify(indicators) !== JSON.stringify(rule.indicatorSettings || null)) {
+          mutated = true;
+        }
+        rule.indicatorSettings = indicators;
+      } else if (rule.indicatorSettings) {
+        delete rule.indicatorSettings;
+        mutated = true;
+      }
       rule.entryPrice = 0;
       rule.exitPrice = 0;
     } else {
@@ -2336,6 +2421,10 @@ function normalizeRules(input) {
         const summary = typeof rule.aiSummary === "string" ? rule.aiSummary.trim() : String(rule.aiSummary || "").trim();
         if (summary !== rule.aiSummary) mutated = true;
         rule.aiSummary = summary;
+      }
+      if (rule.indicatorSettings) {
+        delete rule.indicatorSettings;
+        mutated = true;
       }
     }
 
@@ -2369,6 +2458,7 @@ function mapRuleRow(row) {
     enabled: row.enabled === 1 || row.enabled === true,
     aiSummary: row.ai_summary || undefined,
     aiModel: row.ai_model || undefined,
+    indicatorSettings: normalizeIndicatorSettings(safeJSONParse(row.indicator_settings) || null) || undefined,
     createdAt: Number(row.created_at) || Date.now(),
     lastError: row.last_error || undefined,
     lastErrorCode: row.last_error_code || undefined,
@@ -2505,8 +2595,8 @@ async function writeRules(userId, rules) {
     for (const rule of rules) {
       ids.push(rule.id);
       await connection.query(
-        `INSERT INTO rules (id, user_id, type, symbol, dip_pct, tp_pct, stop_loss_pct, trailing_stop_pct, take_profit_steps, entry_price, exit_price, budget_usdt, enabled, ai_summary, ai_model, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO rules (id, user_id, type, symbol, dip_pct, tp_pct, stop_loss_pct, trailing_stop_pct, take_profit_steps, indicator_settings, entry_price, exit_price, budget_usdt, enabled, ai_summary, ai_model, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
            type = VALUES(type),
            symbol = VALUES(symbol),
@@ -2515,6 +2605,7 @@ async function writeRules(userId, rules) {
            stop_loss_pct = VALUES(stop_loss_pct),
            trailing_stop_pct = VALUES(trailing_stop_pct),
            take_profit_steps = VALUES(take_profit_steps),
+           indicator_settings = VALUES(indicator_settings),
            entry_price = VALUES(entry_price),
            exit_price = VALUES(exit_price),
            budget_usdt = VALUES(budget_usdt),
@@ -2533,6 +2624,7 @@ async function writeRules(userId, rules) {
           Number(rule.stopLossPct) > 0 ? Number(rule.stopLossPct) : null,
           Number(rule.trailingStopPct) > 0 ? Number(rule.trailingStopPct) : null,
           safeJSONStringify(rule.takeProfitSteps) || null,
+          safeJSONStringify(rule.indicatorSettings) || null,
           rule.type === "ai" ? Number(rule.entryPrice) : null,
           rule.type === "ai" ? Number(rule.exitPrice) : null,
           Number(rule.budgetUSDT) || 0,

@@ -111,3 +111,140 @@ test('engine persists rule state with stops and closures', async () => {
   assert.ok(closedState.realizedQuote > 0);
   assert.ok(stopOrdersPlaced > 0);
 });
+
+test('manual rules honour indicator entry and exit filters', async () => {
+  const { createEngineProcessor } = await strategyModulePromise;
+  const savedStates = new Map();
+  const processor = createEngineProcessor({
+    loadRuleState: async ({ ruleId }) => savedStates.get(ruleId) || null,
+    saveRuleState: async ({ ruleId, state }) => {
+      savedStates.set(ruleId, state ? JSON.parse(JSON.stringify(state)) : null);
+    }
+  });
+
+  const now = Date.now();
+  const buyTrade = { id: 42, isBuyer: true, qty: '0.004', price: '29700', time: now };
+  const buildKlines = () => {
+    const rows = [];
+    let price = 30000;
+    for (let i = 0; i < 200; i += 1) {
+      price *= 1.01;
+      const close = price;
+      const open = close / 1.01;
+      const high = close * 1.005;
+      const low = close / 1.005;
+      const openTime = now - (200 - i) * 60000;
+      const closeTime = openTime + 60000;
+      rows.push([
+        String(openTime),
+        open.toFixed(2),
+        high.toFixed(2),
+        low.toFixed(2),
+        close.toFixed(2),
+        '12.5',
+        String(closeTime),
+        (close * 12.5).toFixed(2),
+        '100',
+        '6.1',
+        (close * 6.1).toFixed(2),
+        '0'
+      ]);
+    }
+    return rows;
+  };
+
+  const placeLimitCalls = [];
+  const openOrdersStore = [];
+  let nextOrderId = 1;
+  let tradeCalls = 0;
+  const fakeBinance = {
+    exchangeInfo: async () => ({
+      symbols: [{
+        symbol: 'BTCUSDT',
+        filters: [
+          { filterType: 'LOT_SIZE', stepSize: '0.001', minQty: '0.001' },
+          { filterType: 'PRICE_FILTER', tickSize: '0.01' },
+          { filterType: 'MIN_NOTIONAL', minNotional: '10' }
+        ]
+      }]
+    }),
+    avgPrice: async () => ({ price: '30000' }),
+    klines: async () => buildKlines(),
+    openOrders: async () => openOrdersStore.map(order => ({ ...order })),
+    myTrades: async () => {
+      tradeCalls += 1;
+      if (tradeCalls >= 3) {
+        for (let i = openOrdersStore.length - 1; i >= 0; i -= 1) {
+          if (openOrdersStore[i].side === 'BUY') openOrdersStore.splice(i, 1);
+        }
+        return [buyTrade];
+      }
+      return [];
+    },
+    placeLimit: async (symbol, side, qty, price, options = {}) => {
+      placeLimitCalls.push({ symbol, side, qty, price });
+      const order = {
+        clientOrderId: options?.clientOrderId || `ID${nextOrderId}`,
+        orderId: String(nextOrderId),
+        side,
+        price: String(price),
+        origQty: String(qty),
+        quantity: String(qty)
+      };
+      nextOrderId += 1;
+      openOrdersStore.push(order);
+    },
+    cancelOrder: async (symbol, orderId) => {
+      const index = openOrdersStore.findIndex(order => order.orderId === String(orderId));
+      if (index >= 0) openOrdersStore.splice(index, 1);
+    },
+    placeStopLossLimit: async (symbol, side, qty, stopPrice) => {
+      openOrdersStore.push({
+        clientOrderId: `STOP${nextOrderId}`,
+        orderId: String(nextOrderId),
+        side,
+        price: String(stopPrice),
+        origQty: String(qty),
+        quantity: String(qty)
+      });
+      nextOrderId += 1;
+    }
+  };
+
+  const rule = {
+    id: 'ind-rule-1',
+    type: 'manual',
+    symbol: 'BTCUSDT',
+    dipPct: 1,
+    tpPct: 2,
+    budgetUSDT: 120,
+    enabled: true,
+    createdAt: now,
+    takeProfitSteps: [{ profitPct: 2, portionPct: 100 }],
+    indicatorSettings: {
+      interval: '1m',
+      rsiPeriod: 14,
+      macdFast: 12,
+      macdSlow: 26,
+      macdSignal: 9,
+      rsiEntryMax: 10,
+      macdExit: 'bearish'
+    }
+  };
+
+  const snapshot = { userId: 7, binance: fakeBinance, rules: [rule] };
+
+  await processor.processSnapshot(snapshot);
+  assert.equal(placeLimitCalls.filter(c => c.side === 'BUY').length, 0, 'buy should be blocked by RSI');
+
+  rule.indicatorSettings.rsiEntryMax = 100;
+  await processor.processSnapshot(snapshot);
+  assert.equal(placeLimitCalls.filter(c => c.side === 'BUY').length, 1, 'buy should be placed after RSI passes');
+
+  await processor.processSnapshot(snapshot);
+  assert.equal(placeLimitCalls.filter(c => c.side === 'SELL').length, 0, 'sell should be blocked by MACD exit filter');
+
+  rule.indicatorSettings.macdExit = 'bullish';
+  await processor.processSnapshot(snapshot);
+  assert.equal(placeLimitCalls.filter(c => c.side === 'SELL').length, 1, 'sell should be placed once MACD exit passes');
+});
