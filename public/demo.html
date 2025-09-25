@@ -32,6 +32,8 @@
         </div>
       </div>
 
+      <div id="demoStatus" class="status"></div>
+
       <div class="account-switcher" id="accountSwitcher" role="tablist" aria-label="Account mode">
         <button class="account-switcher__btn" id="accountRealBtn" type="button" data-i18n="accounts.real" aria-pressed="false">Real account</button>
         <button class="account-switcher__btn is-active" id="accountDemoBtn" type="button" data-i18n="accounts.demo" aria-pressed="true">Demo account</button>
@@ -48,40 +50,179 @@
       </article>
 
       <section class="dashboard-grid demo-grid">
-        <article class="card demo-card">
+        <article class="card demo-card" id="manualDemoCard">
           <div class="demo-card__header">
             <span class="pill" data-i18n="demo.badge">Preloaded</span>
             <h2 data-i18n="demo.manualTitle">Manual rules (demo)</h2>
           </div>
           <p data-i18n="demo.manualSubtitle">Test dip-buying and take-profit ideas with simulated capital.</p>
-          <div class="demo-placeholder" data-i18n="demo.manualPlaceholder">Demo manual rules will appear here soon.</div>
+
+          <form id="manualDemoForm">
+            <div class="form-row">
+              <label>
+                <span data-i18n="demo.manual.assetId">Asset ID (CoinGecko)</span>
+                <input id="manualAssetId" type="text" placeholder="bitcoin" data-i18n-placeholder="demo.manual.assetIdPlaceholder" required>
+              </label>
+              <label>
+                <span data-i18n="demo.manual.assetSymbol">Symbol</span>
+                <input id="manualAssetSymbol" type="text" placeholder="BTC" data-i18n-placeholder="demo.manual.assetSymbolPlaceholder" required>
+              </label>
+              <label>
+                <span data-i18n="demo.manual.entryPrice">Entry price (USD)</span>
+                <input id="manualEntryPrice" type="number" min="0" step="0.0000001" placeholder="60000" data-i18n-placeholder="demo.manual.entryPlaceholder" required>
+              </label>
+            </div>
+            <div class="form-row">
+              <label>
+                <span data-i18n="demo.manual.takeProfit">Take profit %</span>
+                <input id="manualTakeProfit" type="number" min="0" step="0.01" placeholder="2" data-i18n-placeholder="demo.manual.takeProfitPlaceholder" required>
+              </label>
+              <label>
+                <span data-i18n="demo.manual.stopLoss">Stop loss %</span>
+                <input id="manualStopLoss" type="number" min="0" step="0.01" placeholder="1" data-i18n-placeholder="demo.manual.stopLossPlaceholder" required>
+              </label>
+              <label>
+                <span data-i18n="demo.manual.budget">Budget (USD)</span>
+                <input id="manualBudget" type="number" min="0" step="0.01" placeholder="100" data-i18n-placeholder="demo.manual.budgetPlaceholder" required>
+              </label>
+            </div>
+            <div class="actions">
+              <button id="manualDemoSubmit" type="submit" class="btn" data-i18n="demo.manual.create">Create demo rule</button>
+              <button id="manualDemoRefresh" type="button" class="btn ghost" data-i18n="demo.actions.refresh">Refresh</button>
+            </div>
+          </form>
+
+          <div class="table-wrapper">
+            <table id="manualDemoTable">
+              <thead>
+                <tr>
+                  <th data-i18n="demo.table.asset">Asset</th>
+                  <th data-i18n="demo.table.entry">Entry</th>
+                  <th data-i18n="demo.table.targets">Targets</th>
+                  <th data-i18n="demo.table.budget">Budget</th>
+                  <th data-i18n="demo.table.position">Position</th>
+                  <th data-i18n="demo.table.actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="empty">
+                  <td colspan="6" data-i18n="demo.table.empty">No demo rules yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </article>
 
-        <article class="card demo-card">
+        <article class="card demo-card" id="aiDemoCard">
           <div class="demo-card__header">
             <span class="pill" data-i18n="demo.badge">Preloaded</span>
             <h2 data-i18n="demo.aiTitle">AI rules (demo)</h2>
           </div>
           <p data-i18n="demo.aiSubtitle">Preview AI-generated strategies in a safe sandbox.</p>
-          <div class="demo-placeholder" data-i18n="demo.aiPlaceholder">Demo AI rules will appear here soon.</div>
+
+          <form id="aiDemoForm">
+            <div class="form-row">
+              <label>
+                <span data-i18n="demo.ai.budget">Budget (USD)</span>
+                <input id="aiDemoBudget" type="number" min="0" step="0.01" placeholder="150" data-i18n-placeholder="demo.ai.budgetPlaceholder" required>
+              </label>
+              <label>
+                <span data-i18n="demo.ai.locale">Language</span>
+                <select id="aiDemoLocale">
+                  <option value="en" data-i18n-option="demo.ai.localeEnglish">English</option>
+                  <option value="ar" data-i18n-option="demo.ai.localeArabic">العربية</option>
+                </select>
+              </label>
+              <label>
+                <span data-i18n="demo.ai.model">Model</span>
+                <input id="aiDemoModel" type="text" placeholder="gpt-4o-mini" data-i18n-placeholder="demo.ai.modelPlaceholder">
+              </label>
+            </div>
+            <div class="actions">
+              <button id="aiDemoSubmit" type="submit" class="btn" data-i18n="demo.ai.generate">Generate with AI</button>
+              <button id="aiDemoRefresh" type="button" class="btn ghost" data-i18n="demo.actions.refresh">Refresh</button>
+            </div>
+          </form>
+
+          <div class="table-wrapper">
+            <table id="aiDemoTable">
+              <thead>
+                <tr>
+                  <th data-i18n="demo.table.asset">Asset</th>
+                  <th data-i18n="demo.table.entry">Entry</th>
+                  <th data-i18n="demo.table.targets">Targets</th>
+                  <th data-i18n="demo.table.budget">Budget</th>
+                  <th data-i18n="demo.table.summary">Summary</th>
+                  <th data-i18n="demo.table.actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="empty">
+                  <td colspan="6" data-i18n="demo.table.empty">No demo rules yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </article>
 
-        <article class="card demo-card">
+        <article class="card demo-card" id="ordersDemoCard">
           <div class="demo-card__header">
             <span class="pill" data-i18n="demo.badge">Preloaded</span>
             <h2 data-i18n="demo.ordersTitle">Open orders (demo)</h2>
           </div>
           <p data-i18n="demo.ordersSubtitle">Track how demo orders would execute without risking funds.</p>
-          <div class="demo-placeholder" data-i18n="demo.ordersPlaceholder">Demo open orders will appear here soon.</div>
+          <div class="actions">
+            <button id="ordersDemoRefresh" type="button" class="btn ghost" data-i18n="demo.actions.refresh">Refresh</button>
+          </div>
+          <div class="table-wrapper">
+            <table id="ordersDemoTable">
+              <thead>
+                <tr>
+                  <th data-i18n="demo.table.asset">Asset</th>
+                  <th data-i18n="demo.table.side">Side</th>
+                  <th data-i18n="demo.table.price">Price</th>
+                  <th data-i18n="demo.table.quantity">Quantity</th>
+                  <th data-i18n="demo.table.value">Value</th>
+                  <th data-i18n="demo.table.status">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="empty">
+                  <td colspan="6" data-i18n="demo.table.ordersEmpty">No demo orders yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </article>
 
-        <article class="card demo-card">
+        <article class="card demo-card" id="tradesDemoCard">
           <div class="demo-card__header">
             <span class="pill" data-i18n="demo.badge">Preloaded</span>
             <h2 data-i18n="demo.completedTitle">Completed trades (demo)</h2>
           </div>
           <p data-i18n="demo.completedSubtitle">Review the outcome of simulated trades once they close.</p>
-          <div class="demo-placeholder" data-i18n="demo.completedPlaceholder">Demo completed trades will appear here soon.</div>
+          <div class="actions">
+            <button id="tradesDemoRefresh" type="button" class="btn ghost" data-i18n="demo.actions.refresh">Refresh</button>
+          </div>
+          <div class="table-wrapper">
+            <table id="tradesDemoTable">
+              <thead>
+                <tr>
+                  <th data-i18n="demo.table.asset">Asset</th>
+                  <th data-i18n="demo.table.entry">Entry</th>
+                  <th data-i18n="demo.table.exit">Exit</th>
+                  <th data-i18n="demo.table.quantity">Quantity</th>
+                  <th data-i18n="demo.table.profit">Profit</th>
+                  <th data-i18n="demo.table.opened">Opened</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="empty">
+                  <td colspan="6" data-i18n="demo.table.tradesEmpty">No completed demo trades yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </article>
       </section>
     </main>
