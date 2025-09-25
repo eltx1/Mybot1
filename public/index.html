@@ -155,21 +155,44 @@
     </section>
 
     <main id="dashboard" class="hidden">
-      <div class="dashboard-header">
-        <div>
-          <h1 data-i18n="dashboard.title">MY1 control center</h1>
-          <p class="muted" data-i18n="dashboard.subtitle">Manage AI ideas, monitor open orders, and keep your Binance link under supervision.</p>
+      <section class="dashboard-hero">
+        <div class="dashboard-hero__inner">
+          <div class="dashboard-hero__header">
+            <div class="dashboard-hero__titles">
+              <span class="dashboard-hero__badge" data-i18n="dashboard.badge">Live autopilot hub</span>
+              <h1 data-i18n="dashboard.title">MY1 control center</h1>
+              <p class="muted" data-i18n="dashboard.subtitle">Manage AI ideas, monitor open orders, and keep your Binance link under supervision.</p>
+            </div>
+            <div class="dashboard-hero__actions">
+              <div class="account-switcher" id="accountSwitcher" role="tablist" aria-label="Account mode">
+                <button class="account-switcher__btn is-active" id="accountRealBtn" type="button" data-i18n="accounts.real" aria-pressed="true">Real account</button>
+                <button class="account-switcher__btn" id="accountDemoBtn" type="button" data-i18n="accounts.demo" aria-pressed="false">Demo account</button>
+              </div>
+              <div class="user-meta">
+                <span class="pill" id="welcomeName" data-i18n="dashboard.welcome">Welcome</span>
+                <button class="btn ghost" id="logoutBtn" type="button" data-i18n="dashboard.logout">Sign out</button>
+              </div>
+            </div>
+          </div>
+          <div class="dashboard-highlights">
+            <article class="highlight-card">
+              <span class="highlight-label" data-i18n="dashboard.highlightManual">Manual strategies</span>
+              <strong class="highlight-value" id="manualHighlightCount">0</strong>
+              <span class="highlight-meta" id="manualHighlightMeta"></span>
+            </article>
+            <article class="highlight-card">
+              <span class="highlight-label" data-i18n="dashboard.highlightAi">AI strategies</span>
+              <strong class="highlight-value" id="aiHighlightCount">0</strong>
+              <span class="highlight-meta" id="aiHighlightMeta"></span>
+            </article>
+            <article class="highlight-card is-empty" id="planHighlight">
+              <span class="highlight-label" data-i18n="dashboard.highlightPlan">Subscription</span>
+              <strong class="highlight-value" id="planHighlightName">—</strong>
+              <span class="highlight-meta" id="planHighlightMeta"></span>
+            </article>
+          </div>
         </div>
-        <div class="user-meta">
-          <span class="pill" id="welcomeName" data-i18n="dashboard.welcome">Welcome</span>
-          <button class="btn ghost" id="logoutBtn" type="button" data-i18n="dashboard.logout">Sign out</button>
-        </div>
-      </div>
-
-      <div class="account-switcher" id="accountSwitcher" role="tablist" aria-label="Account mode">
-        <button class="account-switcher__btn is-active" id="accountRealBtn" type="button" data-i18n="accounts.real" aria-pressed="true">Real account</button>
-        <button class="account-switcher__btn" id="accountDemoBtn" type="button" data-i18n="accounts.demo" aria-pressed="false">Demo account</button>
-      </div>
+      </section>
 
       <div id="status" class="status" role="status" aria-live="polite"></div>
 

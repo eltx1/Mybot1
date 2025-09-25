@@ -72,7 +72,14 @@
           title: "MY1 control center",
           subtitle: "Manage AI ideas, monitor open orders, and keep your Binance link under supervision.",
           welcome: "Welcome",
-          logout: "Sign out"
+          logout: "Sign out",
+          badge: "Live autopilot hub",
+          highlightManual: "Manual strategies",
+          highlightAi: "AI strategies",
+          highlightPlan: "Subscription",
+          highlightPlanNone: "No plan yet",
+          highlightPlanCta: "Activate a plan to unlock automation",
+          highlightPlanPending: "Awaiting confirmation"
         },
         accounts: {
           real: "Real account",
@@ -369,7 +376,14 @@
           title: "مركز تحكم MY1",
           subtitle: "أدر أفكار الذكاء الاصطناعي، راقب الأوامر المفتوحة، وأشرف على ربط Binance.",
           welcome: "مرحبًا",
-          logout: "تسجيل الخروج"
+          logout: "تسجيل الخروج",
+          badge: "مركز التحكم اللحظي",
+          highlightManual: "استراتيجيات يدوية",
+          highlightAi: "استراتيجيات الذكاء الاصطناعي",
+          highlightPlan: "الاشتراك",
+          highlightPlanNone: "لا توجد باقة",
+          highlightPlanCta: "فعّل باقة لفتح جميع المزايا",
+          highlightPlanPending: "بانتظار التأكيد"
         },
         accounts: {
           real: "الحساب الحقيقي",
@@ -663,6 +677,13 @@
     const completedTradesNotice = document.getElementById('completedTradesNotice');
     const manualCountEl = document.getElementById('manualCount');
     const aiCountEl = document.getElementById('aiCount');
+    const manualHighlightCount = document.getElementById('manualHighlightCount');
+    const manualHighlightMeta = document.getElementById('manualHighlightMeta');
+    const aiHighlightCount = document.getElementById('aiHighlightCount');
+    const aiHighlightMeta = document.getElementById('aiHighlightMeta');
+    const planHighlight = document.getElementById('planHighlight');
+    const planHighlightName = document.getElementById('planHighlightName');
+    const planHighlightMeta = document.getElementById('planHighlightMeta');
     const refreshOrdersBtn = document.getElementById('refreshOrders');
     const refreshCompletedBtn = document.getElementById('refreshCompletedTrades');
     const languageToggle = document.getElementById('languageToggle');
@@ -694,6 +715,7 @@
     const loginMfaInput = document.getElementById('loginMfa');
     const accountRealBtn = document.getElementById('accountRealBtn');
     const accountDemoBtn = document.getElementById('accountDemoBtn');
+    const isDemoPage = window.location.pathname.endsWith('/demo.html');
 
     function resolveTranslation(lang, key) {
       const fallback = translations.en;
@@ -1464,6 +1486,7 @@
 
     function applyEntitlementsUI() {
       const ent = state.entitlements || {};
+      const pending = ent && ent.pending ? ent.pending : null;
       const hasPlan = Boolean(ent && ent.plan);
       const manualEnabled = Boolean(state.token && ent && ent.manualEnabled);
       const aiEnabled = Boolean(state.token && ent && ent.aiEnabled);
@@ -1479,6 +1502,54 @@
       }
       if (aiCountEl) {
         aiCountEl.textContent = formatUsageCount(activeAi, aiLimit);
+      }
+
+      if (manualHighlightCount) {
+        manualHighlightCount.textContent = activeManual;
+      }
+      if (manualHighlightMeta) {
+        if (!state.token) {
+          manualHighlightMeta.textContent = translate('subscription.loginRequired');
+        } else if (!hasPlan) {
+          if (pending && pending.plan) {
+            const pendingName = pending.plan?.name;
+            manualHighlightMeta.textContent = pendingName
+              ? translate('subscription.pendingNotice', { name: pendingName })
+              : translate('subscription.renewing');
+          } else {
+            manualHighlightMeta.textContent = translate('dashboard.highlightPlanCta');
+          }
+        } else if (!manualEnabled) {
+          manualHighlightMeta.textContent = translate('subscription.manualDisabled');
+        } else if (Number.isFinite(manualLimit) && manualLimit > 0) {
+          manualHighlightMeta.textContent = translate('subscription.manualFeature', { used: activeManual, limit: manualLimit });
+        } else {
+          manualHighlightMeta.textContent = translate('subscription.manualUnlimited');
+        }
+      }
+
+      if (aiHighlightCount) {
+        aiHighlightCount.textContent = activeAi;
+      }
+      if (aiHighlightMeta) {
+        if (!state.token) {
+          aiHighlightMeta.textContent = translate('subscription.loginRequired');
+        } else if (!hasPlan) {
+          if (pending && pending.plan) {
+            const pendingName = pending.plan?.name;
+            aiHighlightMeta.textContent = pendingName
+              ? translate('subscription.pendingNotice', { name: pendingName })
+              : translate('subscription.renewing');
+          } else {
+            aiHighlightMeta.textContent = translate('dashboard.highlightPlanCta');
+          }
+        } else if (!aiEnabled) {
+          aiHighlightMeta.textContent = translate('subscription.aiDisabled');
+        } else if (Number.isFinite(aiLimit) && aiLimit > 0) {
+          aiHighlightMeta.textContent = translate('subscription.aiFeature', { used: activeAi, limit: aiLimit });
+        } else {
+          aiHighlightMeta.textContent = translate('subscription.aiUnlimited');
+        }
       }
 
       if (manualForm) {
@@ -1669,6 +1740,24 @@
       if (!subscriptionCard) return;
       const ent = state.entitlements || null;
       const pending = ent && ent.pending ? ent.pending : null;
+      if (planHighlight) {
+        planHighlight.classList.remove('is-empty', 'is-pending');
+      }
+      if (planHighlightName) {
+        planHighlightName.textContent = translate('dashboard.highlightPlanNone');
+      }
+      if (planHighlightMeta) {
+        if (!state.token) {
+          planHighlightMeta.textContent = translate('subscription.loginRequired');
+        } else if (pending && pending.plan) {
+          const pendingName = pending.plan?.name;
+          planHighlightMeta.textContent = pendingName
+            ? translate('subscription.pendingNotice', { name: pendingName })
+            : translate('subscription.renewing');
+        } else {
+          planHighlightMeta.textContent = translate('dashboard.highlightPlanCta');
+        }
+      }
       if (subscriptionActions) {
         subscriptionActions.innerHTML = '';
       }
@@ -1679,6 +1768,25 @@
         subscriptionFeaturesEl.innerHTML = '';
         subscriptionWarning.classList.remove('visible', 'info');
         subscriptionWarning.textContent = '';
+        if (planHighlight) {
+          planHighlight.classList.add('is-empty');
+          planHighlight.classList.toggle('is-pending', Boolean(pending && pending.plan));
+        }
+        if (planHighlightName) {
+          planHighlightName.textContent = translate('dashboard.highlightPlanNone');
+        }
+        if (planHighlightMeta) {
+          if (!state.token) {
+            planHighlightMeta.textContent = translate('subscription.loginRequired');
+          } else if (pending && pending.plan) {
+            const pendingName = pending.plan?.name;
+            planHighlightMeta.textContent = pendingName
+              ? translate('subscription.pendingNotice', { name: pendingName })
+              : translate('subscription.renewing');
+          } else {
+            planHighlightMeta.textContent = translate('dashboard.highlightPlanCta');
+          }
+        }
         if (subscriptionActions) {
           const note = document.createElement('p');
           note.className = 'muted';
@@ -1699,6 +1807,13 @@
         else if (statusKey === 'expired') statusClass += ' expired';
         subscriptionStatus.textContent = translate(`subscription.status${statusKey.charAt(0).toUpperCase()}${statusKey.slice(1)}`);
         subscriptionStatus.className = statusClass;
+        if (planHighlight) {
+          planHighlight.classList.remove('is-empty');
+          planHighlight.classList.toggle('is-pending', statusKey === 'pending');
+        }
+        if (planHighlightName) {
+          planHighlightName.textContent = ent.plan.name || translate('dashboard.highlightPlanNone');
+        }
         const summaryParts = [];
         summaryParts.push(`<strong>${escapeHtml(translate('subscription.currentPlan', { name: ent.plan.name }))}</strong>`);
         if (ent.expiresAt) {
@@ -1710,6 +1825,22 @@
           summaryParts.push(`<span class="subscription-meta">${escapeHtml(translate(key, { count: days }))}</span>`);
         }
         subscriptionSummary.innerHTML = summaryParts.join(' ');
+        if (planHighlightMeta) {
+          const highlightParts = [];
+          const statusLabel = translate(`subscription.status${statusKey.charAt(0).toUpperCase()}${statusKey.slice(1)}`);
+          if (statusLabel) highlightParts.push(statusLabel);
+          if (statusKey === 'pending') {
+            highlightParts.push(translate('dashboard.highlightPlanPending'));
+          } else if (Number.isFinite(Number(ent.remainingDays)) && Number(ent.remainingDays) >= 0) {
+            const days = Number(ent.remainingDays);
+            const key = days === 1 ? 'subscription.daysLeftOne' : 'subscription.daysLeft';
+            highlightParts.push(translate(key, { count: days }));
+          } else if (ent.expiresAt) {
+            highlightParts.push(translate('subscription.expires', { date: formatIsoDate(ent.expiresAt) }));
+          }
+          const metaText = highlightParts.filter(Boolean).join(' • ');
+          planHighlightMeta.textContent = metaText || translate('dashboard.highlightPlanCta');
+        }
         const activeManual = state.rules.filter(r => (r.type || '').toLowerCase() === 'manual' && r.enabled).length;
         const activeAi = state.rules.filter(r => (r.type || '').toLowerCase() === 'ai' && r.enabled).length;
         const manualLimit = Number(ent.manualLimit);
@@ -2499,6 +2630,10 @@
     refreshCompletedBtn.addEventListener('click', () => loadCompletedTrades());
     if (accountRealBtn) {
       accountRealBtn.addEventListener('click', () => {
+        if (isDemoPage) {
+          window.location.href = '/';
+          return;
+        }
         accountRealBtn.classList.add('is-active');
         accountRealBtn.setAttribute('aria-pressed', 'true');
         if (accountDemoBtn) {
@@ -2509,13 +2644,16 @@
     }
     if (accountDemoBtn) {
       accountDemoBtn.addEventListener('click', () => {
+        if (!isDemoPage) {
+          window.location.href = '/demo.html';
+          return;
+        }
         accountDemoBtn.classList.add('is-active');
         accountDemoBtn.setAttribute('aria-pressed', 'true');
         if (accountRealBtn) {
           accountRealBtn.classList.remove('is-active');
           accountRealBtn.setAttribute('aria-pressed', 'false');
         }
-        window.location.href = '/demo.html';
       });
     }
     languageToggle.addEventListener('click', () => {
