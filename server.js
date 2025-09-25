@@ -3584,12 +3584,6 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
     `6. Mention the supporting data and news you considered inside the summary and write it in ${summaryLanguage}.`
   ].join("\n");
 
-  const userPrompt = [
-    "Analyse the following trading context and respond using the requested JSON schema.",
-    "DATA:",
-    JSON.stringify(aiInput, null, 2)
-  ].join("\n");
-
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
