@@ -1,0 +1,30 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="lion-glow" cx="50%" cy="50%" r="65%">
+      <stop offset="0%" stop-color="#fde68a" />
+      <stop offset="45%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#7c2d12" />
+    </radialGradient>
+    <linearGradient id="lion-mane" x1="24" y1="18" x2="108" y2="116" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fcd34d" />
+      <stop offset="45%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#ea580c" />
+    </linearGradient>
+    <linearGradient id="lion-face" x1="42" y1="36" x2="86" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fff7ed" />
+      <stop offset="100%" stop-color="#facc15" />
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="60" fill="url(#lion-glow)" />
+  <path d="M31 52c0-17 14-31 33-31s33 14 33 31c0 10-5 18-12 24 2 6 0 13-6 18-3 3-8 5-15 5s-12-2-15-5c-6-5-8-12-6-18-7-6-12-14-12-24z" fill="url(#lion-mane)" />
+  <path d="M64 42c-14 0-24 11-24 26 0 17 12 28 24 28s24-11 24-28c0-15-10-26-24-26z" fill="url(#lion-face)" />
+  <path d="M54 68c0-4 3-7 10-7s10 3 10 7-3 7-10 7-10-3-10-7z" fill="#b45309" />
+  <path d="M58 63c-3 0-5 2-5 4 0 3 3 5 11 5s11-2 11-5c0-2-2-4-5-4-3 1-9 1-12 0z" fill="#78350f" opacity="0.4" />
+  <circle cx="52" cy="62" r="5" fill="#1f2937" />
+  <circle cx="76" cy="62" r="5" fill="#1f2937" />
+  <circle cx="50" cy="61" r="2" fill="#fef3c7" />
+  <circle cx="74" cy="61" r="2" fill="#fef3c7" />
+  <path d="M64 74c4 0 8 3 8 6 0 5-6 9-8 9s-8-4-8-9c0-3 4-6 8-6z" fill="#7c2d12" />
+  <path d="M64 76c2 0 4 2 4 4 0 3-3 5-4 5s-4-2-4-5c0-2 2-4 4-4z" fill="#facc15" />
+  <path d="M40 60c-4 0-7-2-7-5 0-7 12-17 31-17s31 10 31 17c0 3-3 5-7 5-3-9-13-15-24-15s-21 6-24 15z" fill="#fff7ed" opacity="0.28" />
+</svg>
