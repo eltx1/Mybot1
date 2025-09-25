@@ -620,6 +620,15 @@
       }
     };
 
+    const sanitizeStoredToken = raw => {
+      if (!raw) return '';
+      const trimmed = String(raw).trim();
+      if (!trimmed || trimmed === 'null' || trimmed === 'undefined' || trimmed === 'false' || trimmed === '{}' || trimmed === '""') {
+        return '';
+      }
+      return trimmed;
+    };
+
     const defaultSecurityState = () => ({
       alertEmail: '',
       alertWebhookUrl: '',
@@ -636,7 +645,7 @@
 
     const state = {
       language: localStorage.getItem('mybot_language') || 'en',
-      token: localStorage.getItem('mybot_token') || '',
+      token: sanitizeStoredToken(localStorage.getItem('mybot_token')),
       user: null,
       rules: [],
       plans: [],
@@ -654,6 +663,10 @@
       security: defaultSecurityState(),
       lastRuleErrorsDigest: ''
     };
+
+    if (!state.token) {
+      localStorage.removeItem('mybot_token');
+    }
 
     const generateId = () => {
       if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -807,7 +820,7 @@
     }
 
     function setToken(token) {
-      state.token = token || '';
+      state.token = sanitizeStoredToken(token);
       if (state.token) {
         localStorage.setItem('mybot_token', state.token);
       } else {
@@ -1639,7 +1652,18 @@
       if (!container) return;
       container.innerHTML = '';
       const plans = Array.isArray(state.plans) ? state.plans : [];
-      if (!plans.length) {
+      const seen = new Set();
+      const uniquePlans = [];
+      for (const plan of plans) {
+        const key = plan && plan.id !== undefined && plan.id !== null
+          ? String(plan.id)
+          : JSON.stringify(plan);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        uniquePlans.push(plan);
+      }
+
+      if (!uniquePlans.length) {
         const empty = document.createElement('p');
         empty.className = 'muted';
         empty.textContent = translate('subscription.noPlans');
@@ -1651,7 +1675,7 @@
       const pendingPlanId = ent && ent.pending && ent.pending.plan ? Number(ent.pending.plan.id) : null;
       const availableProviders = state.providers || {};
       const isAuthenticated = Boolean(state.token && state.user);
-      for (const plan of plans) {
+      for (const plan of uniquePlans) {
         const card = document.createElement('article');
         card.className = 'plan-card';
         const isCurrent = currentPlanId !== null && Number(plan.id) === currentPlanId;

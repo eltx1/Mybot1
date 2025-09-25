@@ -226,9 +226,18 @@
     }
   };
 
+  const sanitizeStoredToken = raw => {
+    if (!raw) return '';
+    const trimmed = String(raw).trim();
+    if (!trimmed || trimmed === 'null' || trimmed === 'undefined' || trimmed === 'false' || trimmed === '{}' || trimmed === '""') {
+      return '';
+    }
+    return trimmed;
+  };
+
   const state = {
     language: localStorage.getItem('mybot_language') || 'en',
-    token: localStorage.getItem('mybot_token') || '',
+    token: sanitizeStoredToken(localStorage.getItem('mybot_token')),
     rules: [],
     orders: [],
     trades: [],
@@ -241,6 +250,10 @@
       ai: false
     }
   };
+
+  if (!state.token) {
+    localStorage.removeItem('mybot_token');
+  }
 
   const loginDestination = (() => {
     const explicit = document.body?.getAttribute('data-login-url');
