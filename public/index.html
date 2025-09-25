@@ -164,10 +164,22 @@
               <p class="muted" data-i18n="dashboard.subtitle">Manage AI ideas, monitor open orders, and keep your Binance link under supervision.</p>
             </div>
             <div class="dashboard-hero__actions">
-              <div class="account-switcher" id="accountSwitcher" role="tablist" aria-label="Account mode">
-                <a class="account-switcher__btn is-active" id="accountRealBtn" href="/" role="tab" data-i18n="accounts.real" aria-selected="true">Real account</a>
-                <a class="account-switcher__btn" id="accountDemoBtn" href="/demo.html" role="tab" data-i18n="accounts.demo" aria-selected="false">Demo account</a>
-              </div>
+            <div class="account-switcher" id="accountSwitcher" role="tablist" aria-label="Account mode">
+              <a class="account-switcher__card is-active" id="accountRealBtn" href="/" role="tab" aria-selected="true">
+                <span class="account-switcher__icon" aria-hidden="true">🚀</span>
+                <span class="account-switcher__text">
+                  <span class="account-switcher__title" data-i18n="accounts.real">Real account</span>
+                  <span class="account-switcher__subtitle" data-i18n="accountSwitch.realSubtitle">Live execution with your capital</span>
+                </span>
+              </a>
+              <a class="account-switcher__card" id="accountDemoBtn" href="/demo.html" role="tab" aria-selected="false">
+                <span class="account-switcher__icon" aria-hidden="true">🎯</span>
+                <span class="account-switcher__text">
+                  <span class="account-switcher__title" data-i18n="accounts.demo">Demo account</span>
+                  <span class="account-switcher__subtitle" data-i18n="accountSwitch.demoSubtitle">Practice safely with virtual balance</span>
+                </span>
+              </a>
+            </div>
               <div class="user-meta">
                 <span class="pill" id="welcomeName" data-i18n="dashboard.welcome">Welcome</span>
                 <button class="btn ghost" id="logoutBtn" type="button" data-i18n="dashboard.logout">Sign out</button>
