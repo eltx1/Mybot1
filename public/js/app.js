@@ -88,6 +88,20 @@
           partialsLabel: "Partial take-profits",
           partialsPlaceholder: "50@2,50@5",
           partialsHint: "Format: quantity% @ target%. Example: 50@2 means sell 50% at +2%.",
+          indicatorsTitle: "Indicator filters (optional)",
+          indicatorInterval: "Indicator timeframe",
+          indicatorRsiPeriod: "RSI period",
+          indicatorRsiEntry: "Max RSI for entry",
+          indicatorRsiExit: "Min RSI for exit",
+          indicatorMacdFast: "MACD fast length",
+          indicatorMacdSlow: "MACD slow length",
+          indicatorMacdSignal: "MACD signal length",
+          indicatorMacdEntry: "MACD entry filter",
+          indicatorMacdExit: "MACD exit filter",
+          indicatorMacdNone: "No filter",
+          indicatorMacdBullish: "Bullish crossover",
+          indicatorMacdBearish: "Bearish crossover",
+          indicatorsHint: "RSI and MACD filters are optional. Leave fields empty to ignore them.",
           add: "Add rule",
           sync: "Sync with engine",
           tableTitle: "Manual rules",
@@ -181,6 +195,14 @@
         manualRules: {
           buyOnDipLabel: "Buy on dip:",
           takeProfitLabel: "Take profit:",
+          indicatorsLabel: "Indicators:",
+          intervalLabel: "Interval",
+          rsiLabel: "RSI",
+          macdLabel: "MACD",
+          entryLabel: "Entry",
+          exitLabel: "Exit",
+          macdBullish: "Bullish",
+          macdBearish: "Bearish",
           empty: "No manual rules yet."
         },
         aiRules: {
@@ -343,6 +365,20 @@
           partialsLabel: "أهداف جني ربح جزئية",
           partialsPlaceholder: "50@2,50@5",
           partialsHint: "اكتب النسبة@الهدف، مثال: ‎50@2‎ تعني بيع 50٪ عند +2٪.",
+          indicatorsTitle: "مرشحات المؤشرات (اختياري)",
+          indicatorInterval: "الإطار الزمني للمؤشرات",
+          indicatorRsiPeriod: "فترة مؤشر RSI",
+          indicatorRsiEntry: "أقصى RSI للدخول",
+          indicatorRsiExit: "أدنى RSI للخروج",
+          indicatorMacdFast: "MACD (الخط السريع)",
+          indicatorMacdSlow: "MACD (الخط البطيء)",
+          indicatorMacdSignal: "MACD (خط الإشارة)",
+          indicatorMacdEntry: "فلتر دخول MACD",
+          indicatorMacdExit: "فلتر خروج MACD",
+          indicatorMacdNone: "بدون فلتر",
+          indicatorMacdBullish: "تقاطع صاعد",
+          indicatorMacdBearish: "تقاطع هابط",
+          indicatorsHint: "يمكنك تفعيل RSI وMACD للدخول أو الخروج. اترك الحقول فارغة لتجاهلها.",
           add: "إضافة القاعدة",
           sync: "مزامنة مع المحرك",
           tableTitle: "القواعد اليدوية",
@@ -436,6 +472,14 @@
         manualRules: {
           buyOnDipLabel: "الشراء عند الانخفاض:",
           takeProfitLabel: "جني الربح:",
+          indicatorsLabel: "المؤشرات:",
+          intervalLabel: "الإطار",
+          rsiLabel: "RSI",
+          macdLabel: "MACD",
+          entryLabel: "دخول",
+          exitLabel: "خروج",
+          macdBullish: "صاعد",
+          macdBearish: "هابط",
           empty: "لا توجد قواعد يدوية بعد."
         },
         aiRules: {
@@ -859,6 +903,74 @@
       return steps;
     }
 
+    function readIndicatorSettingsFromForm() {
+      const intervalEl = document.getElementById('indicatorInterval');
+      const rsiPeriodEl = document.getElementById('indicatorRsiPeriod');
+      const rsiEntryEl = document.getElementById('indicatorRsiEntry');
+      const rsiExitEl = document.getElementById('indicatorRsiExit');
+      const macdFastEl = document.getElementById('indicatorMacdFast');
+      const macdSlowEl = document.getElementById('indicatorMacdSlow');
+      const macdSignalEl = document.getElementById('indicatorMacdSignal');
+      const macdEntryEl = document.getElementById('indicatorMacdEntry');
+      const macdExitEl = document.getElementById('indicatorMacdExit');
+
+      const macdEntry = (macdEntryEl?.value || 'none').toLowerCase();
+      const macdExit = (macdExitEl?.value || 'none').toLowerCase();
+      const rsiEntry = Number(rsiEntryEl?.value);
+      const rsiExit = Number(rsiExitEl?.value);
+      const useRsiEntry = Number.isFinite(rsiEntry) && rsiEntry > 0;
+      const useRsiExit = Number.isFinite(rsiExit) && rsiExit > 0;
+      const useMacdEntry = macdEntry === 'bullish' || macdEntry === 'bearish';
+      const useMacdExit = macdExit === 'bullish' || macdExit === 'bearish';
+      if (!useRsiEntry && !useRsiExit && !useMacdEntry && !useMacdExit) {
+        return null;
+      }
+
+      const clampInt = (value, min, max, fallback) => {
+        const num = Number(value);
+        if (!Number.isFinite(num)) return fallback;
+        const rounded = Math.round(num);
+        if (rounded < min) return min;
+        if (rounded > max) return max;
+        return rounded;
+      };
+      const clampFloat = (value, min, max) => {
+        const num = Number(value);
+        if (!Number.isFinite(num)) return null;
+        if (num < min) return min;
+        if (num > max) return max;
+        return Number(num.toFixed(2));
+      };
+
+      const interval = (intervalEl?.value || '15m').toLowerCase();
+      const rsiPeriod = clampInt(rsiPeriodEl?.value, 2, 100, 14);
+      const macdFast = clampInt(macdFastEl?.value, 1, 200, 12);
+      let macdSlow = clampInt(macdSlowEl?.value, macdFast + 1, 300, 26);
+      if (macdSlow <= macdFast) macdSlow = macdFast + 1;
+      const macdSignal = clampInt(macdSignalEl?.value, 1, 100, 9);
+
+      const settings = {
+        interval,
+        rsiPeriod,
+        macdFast,
+        macdSlow,
+        macdSignal
+      };
+      if (useRsiEntry) {
+        settings.rsiEntryMax = clampFloat(rsiEntry, 0, 100);
+      }
+      if (useRsiExit) {
+        settings.rsiExitMin = clampFloat(rsiExit, 0, 100);
+      }
+      if (useMacdEntry) {
+        settings.macdEntry = macdEntry;
+      }
+      if (useMacdExit) {
+        settings.macdExit = macdExit;
+      }
+      return settings;
+    }
+
     function formatDuration(ms) {
       const num = Number(ms);
       if (!Number.isFinite(num) || num <= 0) {
@@ -953,6 +1065,38 @@
         }
         if (riskParts.length) {
           targetsHtml += `<div class="muted small">${escapeHtml(riskParts.join(' • '))}</div>`;
+        }
+        const indicators = rule.indicatorSettings || {};
+        if (indicators && typeof indicators === 'object') {
+          const indicatorParts = [];
+          if (indicators.interval) {
+            indicatorParts.push(`${translate('manualRules.intervalLabel')} ${escapeHtml(String(indicators.interval).toUpperCase())}`);
+          }
+          const rsiDetails = [];
+          if (Number(indicators.rsiEntryMax) > 0) {
+            rsiDetails.push(`${translate('manualRules.entryLabel')} ≤ ${formatNumber(indicators.rsiEntryMax)}`);
+          }
+          if (Number(indicators.rsiExitMin) > 0) {
+            rsiDetails.push(`${translate('manualRules.exitLabel')} ≥ ${formatNumber(indicators.rsiExitMin)}`);
+          }
+          if (rsiDetails.length) {
+            indicatorParts.push(`${translate('manualRules.rsiLabel')} ${rsiDetails.join(' · ')}`);
+          }
+          const macdDetails = [];
+          if (typeof indicators.macdEntry === 'string') {
+            const key = indicators.macdEntry === 'bearish' ? 'manualRules.macdBearish' : 'manualRules.macdBullish';
+            macdDetails.push(`${translate('manualRules.entryLabel')} ${translate(key)}`);
+          }
+          if (typeof indicators.macdExit === 'string') {
+            const key = indicators.macdExit === 'bearish' ? 'manualRules.macdBearish' : 'manualRules.macdBullish';
+            macdDetails.push(`${translate('manualRules.exitLabel')} ${translate(key)}`);
+          }
+          if (macdDetails.length) {
+            indicatorParts.push(`${translate('manualRules.macdLabel')} ${macdDetails.join(' · ')}`);
+          }
+          if (indicatorParts.length) {
+            targetsHtml += `<div class="muted small">${escapeHtml(translate('manualRules.indicatorsLabel'))} ${escapeHtml(indicatorParts.join(' | '))}</div>`;
+          }
         }
         tr.innerHTML = `
           <td data-label="${escapeHtml(translate('manual.table.rule'))}">
@@ -1298,7 +1442,7 @@
       }
 
       if (manualForm) {
-        const inputs = manualForm.querySelectorAll('input');
+        const inputs = manualForm.querySelectorAll('input, select');
         inputs.forEach(input => {
           input.disabled = !manualEnabled;
         });
@@ -2096,6 +2240,10 @@
       }
       if (partials.length) {
         rule.takeProfitSteps = partials;
+      }
+      const indicatorSettings = readIndicatorSettingsFromForm();
+      if (indicatorSettings) {
+        rule.indicatorSettings = indicatorSettings;
       }
       const next = [...state.rules, rule];
       try {

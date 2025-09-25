@@ -6,6 +6,7 @@ const RETRY_BACKOFF_BASE = Math.max(50, Number(process.env.BINANCE_RETRY_BACKOFF
 const AVG_PRICE_TTL = Math.max(1000, Number(process.env.BINANCE_AVG_PRICE_TTL || 5000));
 const EXCHANGE_INFO_TTL = Math.max(60000, Number(process.env.BINANCE_EXCHANGE_INFO_TTL || 300000));
 const TIME_SYNC_TTL = Math.max(30000, Number(process.env.BINANCE_TIME_SYNC_MS || 60000));
+const KLINES_TTL = Math.max(5000, Number(process.env.BINANCE_KLINES_TTL || 15000));
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -58,7 +59,8 @@ export function createBinanceClient(options = {}) {
 
   const caches = {
     avgPrice: new Map(),
-    exchangeInfo: new Map()
+    exchangeInfo: new Map(),
+    klines: new Map()
   };
 
   function getCached(map, key) {
@@ -225,6 +227,23 @@ export function createBinanceClient(options = {}) {
       try {
         const result = await request(`/api/v3/exchangeInfo`, "GET", { symbol: key });
         setCached(caches.exchangeInfo, key || "__all__", result, EXCHANGE_INFO_TTL);
+        return result;
+      } catch (err) {
+        if (cached?.value) {
+          return cached.value;
+        }
+        throw err;
+      }
+    },
+    async klines(symbol, interval = "15m", limit = 120) {
+      const key = `${String(symbol || "").toUpperCase()}:${interval}:${limit}`;
+      const cached = getCached(caches.klines, key);
+      if (cached?.fresh) {
+        return cached.value;
+      }
+      try {
+        const result = await request(`/api/v3/klines`, "GET", { symbol: String(symbol || "").toUpperCase(), interval, limit });
+        setCached(caches.klines, key, result, KLINES_TTL);
         return result;
       } catch (err) {
         if (cached?.value) {
