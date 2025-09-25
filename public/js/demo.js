@@ -1,10 +1,10 @@
 (() => {
   const translations = {
     en: {
-      meta: { title: 'MY1 Demo Trading' },
+      meta: { title: 'Lion Ai Bot Demo Trading' },
       header: {
-        taglineTitle: 'Smart crypto autopilot',
-        taglineSubtitle: 'Designed for modern spot traders.',
+        taglineTitle: 'Lion Ai Bot',
+        taglineSubtitle: 'Smart crypto autopilot for modern spot traders.',
         demoCta: 'Back to real account'
       },
       accounts: {
@@ -34,7 +34,7 @@
           tradesEmpty: 'No demo trades yet'
         },
         infoTitle: 'What is demo mode?',
-        infoBody: 'Use the demo workspace to explore how MY1 behaves without connecting your exchange.',
+        infoBody: 'Use the demo workspace to explore how Lion Ai Bot behaves without connecting your exchange.',
         infoPoint1: 'No subscription is required — demo mode is unlocked for every user.',
         infoPoint2: 'Binance keys are not needed; the simulator uses built-in market data.',
         infoPoint3: 'Future updates will let you practice managing rules before going live.',
@@ -113,10 +113,10 @@
       }
     },
     ar: {
-      meta: { title: 'وضع التداول التجريبي MY1' },
+      meta: { title: 'وضع التداول التجريبي Lion Ai Bot' },
       header: {
-        taglineTitle: 'طيار آلي ذكي للعملات الرقمية',
-        taglineSubtitle: 'مصمم لمتداولي السبوت العصريين.',
+        taglineTitle: 'Lion Ai Bot',
+        taglineSubtitle: 'طيار آلي ذكي لمتداولي السبوت العصريين.',
         demoCta: 'العودة للحساب الحقيقي'
       },
       accounts: {
@@ -146,7 +146,7 @@
           tradesEmpty: 'لا توجد صفقات تجريبية مكتملة بعد'
         },
         infoTitle: 'ما هو الوضع التجريبي؟',
-        infoBody: 'استخدم مساحة العمل التجريبية لمعرفة كيفية عمل MY1 بدون ربط منصتك.',
+        infoBody: 'استخدم مساحة العمل التجريبية لمعرفة كيفية عمل Lion Ai Bot بدون ربط منصتك.',
         infoPoint1: 'لا حاجة لأي اشتراك — الوضع التجريبي متاح للجميع.',
         infoPoint2: 'لا يتطلب مفاتيح Binance؛ يعتمد المحاكي على بيانات سوق مدمجة.',
         infoPoint3: 'تحديثات قادمة ستتيح لك التدرب على إدارة القواعد قبل التفعيل الحقيقي.',

@@ -1,17 +1,17 @@
   (function(){
     const translations = {
       en: {
-        meta: { title: "MY1 Smart Trading Platform" },
+        meta: { title: "Lion Ai Bot Smart Trading Platform" },
         header: {
-          taglineTitle: "Smart crypto autopilot",
-          taglineSubtitle: "Designed for modern spot traders.",
+          taglineTitle: "Lion Ai Bot",
+          taglineSubtitle: "Smart crypto autopilot for modern spot traders.",
           cta: "Explore dashboard",
           demoCta: "Back to real account"
         },
         hero: {
           badge: "Autopilot 2.0 has landed",
           title: "Trade smarter with AI-assisted automation",
-          subtitle: "MY1 monitors the market in real time, suggests AI-powered strategies, and executes your spot rules with transparent controls.",
+          subtitle: "Lion Ai Bot monitors the market in real time, suggests AI-powered strategies, and executes your spot rules with transparent controls.",
           primaryCta: "Start now",
           secondaryCta: "See how it works",
           stat1Value: "30+",
@@ -50,7 +50,7 @@
           price: "${{price}}"
         },
         footer: {
-          copy: "© 2024 MY1 Automation. Built for serious spot traders."
+          copy: "© 2024 Lion Ai Bot Automation. Built for serious spot traders."
         },
         auth: {
           title: "Your personal trading cockpit",
@@ -69,7 +69,7 @@
           registerCta: "Create account"
         },
         dashboard: {
-          title: "MY1 control center",
+          title: "Lion Ai Bot control center",
           subtitle: "Manage AI ideas, monitor open orders, and keep your Binance link under supervision.",
           welcome: "Welcome",
           logout: "Sign out",
@@ -310,17 +310,17 @@
         }
       },
       ar: {
-        meta: { title: "منصة MY1 للتداول الذكي" },
+        meta: { title: "منصة Lion Ai Bot للتداول الذكي" },
         header: {
-          taglineTitle: "طيار آلي ذكي للعملات الرقمية",
-          taglineSubtitle: "مصمم لمتداولي السبوت العصريين.",
+          taglineTitle: "Lion Ai Bot",
+          taglineSubtitle: "طيار آلي ذكي لمتداولي السبوت العصريين.",
           cta: "استكشف اللوحة",
           demoCta: "العودة للحساب الحقيقي"
         },
         hero: {
           badge: "إطلاق Autopilot 2.0",
           title: "تداول بذكاء مع أتمتة مدعومة بالذكاء الاصطناعي",
-          subtitle: "تراقب MY1 السوق لحظيًا، وتقترح استراتيجيات مدعومة بالذكاء الاصطناعي، وتنفذ قواعدك بوضوح كامل.",
+          subtitle: "يتابع Lion Ai Bot السوق لحظيًا، ويقترح استراتيجيات مدعومة بالذكاء الاصطناعي، وينفذ قواعدك بشفافية كاملة.",
           primaryCta: "ابدأ الآن",
           secondaryCta: "تعرّف على آلية العمل",
           stat1Value: "30+",
@@ -359,7 +359,7 @@
           price: "{{price}} دولار"
         },
         footer: {
-          copy: "© 2024 MY1 Automation. صُممت للمتداولين المحترفين."
+          copy: "© 2024 Lion Ai Bot Automation. صُممت للمتداولين المحترفين."
         },
         auth: {
           title: "قمرة القيادة الخاصة بك",
@@ -378,7 +378,7 @@
           registerCta: "إنشاء حساب"
         },
         dashboard: {
-          title: "مركز تحكم MY1",
+          title: "مركز تحكم Lion Ai Bot",
           subtitle: "أدر أفكار الذكاء الاصطناعي، راقب الأوامر المفتوحة، وأشرف على ربط Binance.",
           welcome: "مرحبًا",
           logout: "تسجيل الخروج",
@@ -838,12 +838,18 @@
       landing.classList.remove('hidden');
       authSection.classList.remove('hidden');
       dashboard.classList.add('hidden');
+      if (pricingSection) {
+        pricingSection.classList.remove('hidden');
+      }
     }
 
     function showDashboard() {
       landing.classList.add('hidden');
       authSection.classList.add('hidden');
       dashboard.classList.remove('hidden');
+      if (pricingSection) {
+        pricingSection.classList.add('hidden');
+      }
     }
 
     async function api(url, options = {}) {

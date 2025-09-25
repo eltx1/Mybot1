@@ -240,7 +240,7 @@ function makeClientOrderId(rule, side, suffix = "") {
     .toUpperCase();
   const tag = side === "BUY" ? "B" : "S";
   const cleanedSuffix = suffix ? String(suffix).replace(/[^A-Z0-9]/gi, "").toUpperCase() : "";
-  return `MY1${tag}${base}${cleanedSuffix}`.slice(0, 32);
+  return `LION${tag}${base}${cleanedSuffix}`.slice(0, 32);
 }
 
 function parseBinanceError(err) {
