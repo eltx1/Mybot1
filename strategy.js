@@ -751,7 +751,10 @@ async function processRule({ binance, rule, caches, userId, hooks, stateManager 
       } catch (err) {
         console.error(`[ENGINE] place BUY failed for ${symbol}:`, err?.message || err);
         const details = parseBinanceError(err);
-        if (String(details.message || "").toLowerCase().includes("not whitelisted")) {
+        const normalized = String(details.message || "").toLowerCase();
+        if (normalized.includes("insufficient") || normalized.includes("not enough balance")) {
+          await reportIssue("insufficient_balance", `Not enough balance on Binance to place a ${symbol} order. Add funds and try again.`);
+        } else if (normalized.includes("not whitelisted")) {
           await reportIssue("symbol_not_whitelisted", `Enable ${symbol} for your Binance API key to trade this pair.`);
         }
         return;
