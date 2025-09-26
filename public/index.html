@@ -136,6 +136,7 @@
               <input id="loginMfa" maxlength="6" inputmode="numeric" autocomplete="one-time-code" data-i18n-placeholder="auth.mfaPlaceholder" placeholder="123456">
             </div>
             <button class="btn primary" type="submit" data-i18n="auth.loginCta">Sign in</button>
+            <p class="form-status" id="loginFormStatus" role="status" aria-live="polite"></p>
           </form>
           <form id="registerForm" data-auth-panel="register" class="hidden">
             <div>
@@ -151,6 +152,7 @@
               <input id="registerPassword" type="password" autocomplete="new-password" required data-i18n-placeholder="auth.passwordPlaceholder">
             </div>
             <button class="btn primary" type="submit" data-i18n="auth.registerCta">Create account</button>
+            <p class="form-status" id="registerFormStatus" role="status" aria-live="polite"></p>
           </form>
         </div>
       </div>

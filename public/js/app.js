@@ -249,6 +249,10 @@
         status: {
           loginSuccess: "Signed in successfully.",
           registerSuccess: "Account created successfully.",
+          loginPending: "Signing you in...",
+          loginError: "Unable to sign in. Please check your details and try again.",
+          registerPending: "Creating your account...",
+          registerError: "Unable to create the account. Please try again.",
           keysSaved: "API keys saved.",
           keysRemoved: "Connection removed.",
           manualAdded: "Manual rule added.",
@@ -256,6 +260,12 @@
           aiGenerated: "AI rule generated successfully.",
           ordersRefreshed: "Open orders refreshed.",
           completedRefreshed: "Completed trades updated.",
+          rulesLoading: "Loading your rules...",
+          rulesError: "We couldn't load your rules. Please try again soon.",
+          ordersLoading: "Loading open orders...",
+          ordersError: "We couldn't load open orders.",
+          completedLoading: "Loading completed trades...",
+          completedError: "We couldn't load completed trades.",
           ruleActivated: "Rule enabled.",
           rulePaused: "Rule paused.",
           ruleDeleted: "Rule deleted.",
@@ -306,7 +316,8 @@
           noPlans: "Plans will be available soon."
         },
         ruleErrors: {
-          symbolNotWhitelisted: "Binance rejected {{symbol}} because it isn't whitelisted for your API key. Enable the pair in your Binance API restrictions and try again."
+          symbolNotWhitelisted: "Binance rejected {{symbol}} because it isn't whitelisted for your API key. Enable the pair in your Binance API restrictions and try again.",
+          insufficientBalance: "Not enough balance on Binance to place this order. Add funds to your spot wallet and try again."
         }
       },
       ar: {
@@ -558,6 +569,10 @@
         status: {
           loginSuccess: "تم تسجيل الدخول بنجاح.",
           registerSuccess: "تم إنشاء الحساب بنجاح.",
+          loginPending: "جاري تسجيل الدخول...",
+          loginError: "تعذر تسجيل الدخول. تأكد من البيانات وحاول مرة أخرى.",
+          registerPending: "جاري إنشاء الحساب...",
+          registerError: "تعذر إنشاء الحساب. حاول مرة أخرى.",
           keysSaved: "تم حفظ مفاتيح API.",
           keysRemoved: "تم إلغاء الربط.",
           manualAdded: "تمت إضافة القاعدة اليدوية.",
@@ -565,6 +580,12 @@
           aiGenerated: "تم توليد قاعدة ذكاء اصطناعي بنجاح.",
           ordersRefreshed: "تم تحديث الأوامر المفتوحة.",
           completedRefreshed: "تم تحديث الصفقات المكتملة.",
+          rulesLoading: "جاري تحميل القواعد...",
+          rulesError: "تعذر تحميل القواعد. حاول مرة أخرى لاحقًا.",
+          ordersLoading: "جاري تحميل الأوامر المفتوحة...",
+          ordersError: "تعذر تحميل الأوامر المفتوحة.",
+          completedLoading: "جاري تحميل الصفقات المكتملة...",
+          completedError: "تعذر تحميل الصفقات المكتملة.",
           ruleActivated: "تم تفعيل القاعدة.",
           rulePaused: "تم إيقاف القاعدة.",
           ruleDeleted: "تم حذف القاعدة.",
@@ -615,7 +636,8 @@
           noPlans: "سيتم إتاحة الباقات قريبًا."
         },
         ruleErrors: {
-          symbolNotWhitelisted: "رفضت باينانس تنفيذ {{symbol}} لأن الزوج غير مفعّل لمفتاح الـ API الخاص بك. فعّل الزوج من إعدادات قيود مفاتيح باينانس ثم أعد المحاولة."
+          symbolNotWhitelisted: "رفضت باينانس تنفيذ {{symbol}} لأن الزوج غير مفعّل لمفتاح الـ API الخاص بك. فعّل الزوج من إعدادات قيود مفاتيح باينانس ثم أعد المحاولة.",
+          insufficientBalance: "لا يوجد رصيد كافٍ في حساب Binance لإتمام هذا الأمر. يرجى شحن المحفظة ثم إعادة المحاولة."
         }
       }
     };
@@ -650,13 +672,21 @@
       rules: [],
       plans: [],
       providers: { stripe: false, cryptomus: false },
+      auth: {
+        login: { loading: false, message: '', type: '' },
+        register: { loading: false, message: '', type: '' }
+      },
       entitlements: null,
       ordersTimer: null,
       statusTimer: null,
       hasKeys: false,
+      isRulesLoading: false,
+      rulesError: null,
+      ordersError: null,
       isOrdersLoading: false,
       completedTrades: [],
       completedTradesErrors: [],
+      completedTradesError: null,
       isCompletedTradesLoading: false,
       performanceMetrics: null,
       loginMfaRequired: false,
@@ -681,6 +711,10 @@
     const statusEl = document.getElementById('status');
     const loginForm = document.getElementById('loginForm');
     const registerForm = document.getElementById('registerForm');
+    const loginFormStatus = document.getElementById('loginFormStatus');
+    const registerFormStatus = document.getElementById('registerFormStatus');
+    const loginSubmitBtn = loginForm ? loginForm.querySelector('button[type="submit"]') : null;
+    const registerSubmitBtn = registerForm ? registerForm.querySelector('button[type="submit"]') : null;
     const authTabs = document.querySelectorAll('[data-auth-tab]');
     const welcomeName = document.getElementById('welcomeName');
     const logoutBtn = document.getElementById('logoutBtn');
@@ -766,6 +800,22 @@
       return value;
     }
 
+    function resolveUiMessage(entry, fallbackKey) {
+      if (!entry) {
+        return '';
+      }
+      if (typeof entry === 'string') {
+        return entry;
+      }
+      if (entry.key) {
+        return translate(entry.key);
+      }
+      if (entry.message) {
+        return entry.message;
+      }
+      return fallbackKey ? translate(fallbackKey) : '';
+    }
+
     let currentOrdersCache = [];
 
     function applyTranslations() {
@@ -804,6 +854,46 @@
       renderPerformanceMetrics();
       renderSecuritySettings();
       renderLoginMfa();
+      refreshAuthFormMessages();
+    }
+
+    function updateAuthForm(form, overrides = {}) {
+      if (!state.auth || !state.auth[form]) return;
+      const target = state.auth[form];
+      if (typeof overrides.loading === 'boolean') target.loading = overrides.loading;
+      if (Object.prototype.hasOwnProperty.call(overrides, 'message')) {
+        target.message = overrides.message || '';
+      }
+      if (Object.prototype.hasOwnProperty.call(overrides, 'type')) {
+        target.type = overrides.type || '';
+      }
+      const statusEl = form === 'login' ? loginFormStatus : registerFormStatus;
+      const submitBtn = form === 'login' ? loginSubmitBtn : registerSubmitBtn;
+      const loading = Boolean(target.loading);
+      const message = target.message || '';
+      const type = target.type || '';
+      const pendingKey = form === 'login' ? 'status.loginPending' : 'status.registerPending';
+      if (statusEl) {
+        const text = loading ? translate(pendingKey) : message;
+        statusEl.textContent = text;
+        const classes = ['form-status'];
+        if (loading) classes.push('loading');
+        if (!loading && message) classes.push(type === 'success' ? 'success' : 'error');
+        statusEl.className = classes.join(' ');
+      }
+      if (submitBtn) {
+        submitBtn.disabled = loading;
+        if (loading) {
+          submitBtn.dataset.loading = 'true';
+        } else {
+          delete submitBtn.dataset.loading;
+        }
+      }
+    }
+
+    function refreshAuthFormMessages() {
+      updateAuthForm('login');
+      updateAuthForm('register');
     }
 
     function setStatus(message, type = 'info') {
@@ -1090,6 +1180,9 @@
       if (rule.lastErrorCode === 'symbol_not_whitelisted') {
         return translate('ruleErrors.symbolNotWhitelisted', { symbol: rule.symbol || '' });
       }
+      if (rule.lastErrorCode === 'insufficient_balance') {
+        return translate('ruleErrors.insufficientBalance', { symbol: rule.symbol || '' });
+      }
       if (typeof rule.lastError === 'string' && rule.lastError.trim()) {
         return rule.lastError.trim();
       }
@@ -1115,6 +1208,26 @@
       state.lastRuleErrorsDigest = digest;
     }
 
+    function appendTablePlaceholder(tbody, colspan, message, { loading = false, variant = '' } = {}) {
+      const tr = document.createElement('tr');
+      tr.className = 'empty-row';
+      const classes = ['table-placeholder'];
+      if (loading) classes.push('loading');
+      if (variant) classes.push(variant);
+      tr.innerHTML = `<td colspan="${colspan}"><div class="${classes.join(' ')}">${escapeHtml(message)}</div></td>`;
+      tbody.appendChild(tr);
+    }
+
+    function createListPlaceholder(message, { loading = false, variant = '' } = {}) {
+      const placeholder = document.createElement('div');
+      const classes = ['list-placeholder'];
+      if (loading) classes.push('loading');
+      if (variant) classes.push(variant);
+      placeholder.className = classes.join(' ');
+      placeholder.textContent = message;
+      return placeholder;
+    }
+
     function renderManualRules() {
       const manualRules = state.rules.filter(r => (r.type || '').toLowerCase() === 'manual');
       const ent = state.entitlements || {};
@@ -1122,12 +1235,22 @@
       const manualEnabled = Boolean(ent && ent.manualEnabled);
       const activeManual = state.rules.filter(r => (r.type || '').toLowerCase() === 'manual' && r.enabled).length;
       manualTableBody.innerHTML = '';
-      if (!manualRules.length) {
-        const tr = document.createElement('tr');
-        tr.className = 'empty-row';
-        tr.innerHTML = `<td colspan="5">${escapeHtml(translate('manualRules.empty'))}</td>`;
-        manualTableBody.appendChild(tr);
+      const loading = state.isRulesLoading && !manualRules.length;
+      const errorMessage = resolveUiMessage(state.rulesError, 'status.rulesError');
+      if (loading) {
+        appendTablePlaceholder(manualTableBody, 5, translate('status.rulesLoading'), { loading: true });
         return;
+      }
+      if (errorMessage && !manualRules.length) {
+        appendTablePlaceholder(manualTableBody, 5, errorMessage, { variant: 'error' });
+        return;
+      }
+      if (!manualRules.length) {
+        appendTablePlaceholder(manualTableBody, 5, translate('manualRules.empty'));
+        return;
+      }
+      if (errorMessage) {
+        appendTablePlaceholder(manualTableBody, 5, errorMessage, { variant: 'error' });
       }
       for (const rule of manualRules) {
         const tr = document.createElement('tr');
@@ -1221,12 +1344,22 @@
       const aiEnabled = Boolean(ent && ent.aiEnabled);
       const activeAi = state.rules.filter(r => (r.type || '').toLowerCase() === 'ai' && r.enabled).length;
       aiTableBody.innerHTML = '';
-      if (!aiRules.length) {
-        const tr = document.createElement('tr');
-        tr.className = 'empty-row';
-        tr.innerHTML = `<td colspan="6">${escapeHtml(translate('aiRules.empty'))}</td>`;
-        aiTableBody.appendChild(tr);
+      const loading = state.isRulesLoading && !aiRules.length;
+      const errorMessage = resolveUiMessage(state.rulesError, 'status.rulesError');
+      if (loading) {
+        appendTablePlaceholder(aiTableBody, 6, translate('status.rulesLoading'), { loading: true });
         return;
+      }
+      if (errorMessage && !aiRules.length) {
+        appendTablePlaceholder(aiTableBody, 6, errorMessage, { variant: 'error' });
+        return;
+      }
+      if (!aiRules.length) {
+        appendTablePlaceholder(aiTableBody, 6, translate('aiRules.empty'));
+        return;
+      }
+      if (errorMessage) {
+        appendTablePlaceholder(aiTableBody, 6, errorMessage, { variant: 'error' });
       }
       for (const rule of aiRules) {
         const tr = document.createElement('tr');
@@ -1265,12 +1398,22 @@
     function renderOrders(rows) {
       currentOrdersCache = Array.isArray(rows) ? rows : [];
       ordersTableBody.innerHTML = '';
-      if (!currentOrdersCache.length) {
-        const tr = document.createElement('tr');
-        tr.className = 'empty-row';
-        tr.innerHTML = `<td colspan="7">${escapeHtml(translate('orders.empty'))}</td>`;
-        ordersTableBody.appendChild(tr);
+      const loading = state.isOrdersLoading && !currentOrdersCache.length;
+      const errorMessage = resolveUiMessage(state.ordersError, 'status.ordersError');
+      if (loading) {
+        appendTablePlaceholder(ordersTableBody, 7, translate('status.ordersLoading'), { loading: true });
         return;
+      }
+      if (!currentOrdersCache.length) {
+        if (errorMessage) {
+          appendTablePlaceholder(ordersTableBody, 7, errorMessage, { variant: 'error' });
+        } else {
+          appendTablePlaceholder(ordersTableBody, 7, translate('orders.empty'));
+        }
+        return;
+      }
+      if (errorMessage) {
+        appendTablePlaceholder(ordersTableBody, 7, errorMessage, { variant: 'error' });
       }
       for (const item of currentOrdersCache) {
         if (item.error) {
@@ -1313,12 +1456,28 @@
       if (!completedTradesList) return;
       completedTradesList.innerHTML = '';
 
-      if (!state.completedTrades.length) {
-        const empty = document.createElement('div');
-        empty.className = 'empty-state';
-        empty.textContent = translate('completed.empty');
-        completedTradesList.appendChild(empty);
+      const loading = state.isCompletedTradesLoading && !state.completedTrades.length;
+      const errorMessage = resolveUiMessage(state.completedTradesError, 'status.completedError');
+
+      if (loading) {
+        completedTradesList.appendChild(createListPlaceholder(translate('status.completedLoading'), { loading: true }));
         return;
+      }
+
+      if (!state.completedTrades.length) {
+        if (errorMessage) {
+          completedTradesList.appendChild(createListPlaceholder(errorMessage, { variant: 'error' }));
+        } else {
+          const empty = document.createElement('div');
+          empty.className = 'empty-state';
+          empty.textContent = translate('completed.empty');
+          completedTradesList.appendChild(empty);
+        }
+        return;
+      }
+
+      if (errorMessage) {
+        completedTradesList.appendChild(createListPlaceholder(errorMessage, { variant: 'error' }));
       }
 
       for (const trade of state.completedTrades) {
@@ -2048,6 +2207,7 @@
 
     async function handleLogin(event) {
       event.preventDefault();
+      updateAuthForm('login', { loading: true, message: '', type: '' });
       const payload = {
         email: document.getElementById('loginEmail').value,
         password: document.getElementById('loginPassword').value
@@ -2087,14 +2247,20 @@
         }
         await bootstrapDashboard();
         setStatus(translate('status.loginSuccess'), 'success');
+        updateAuthForm('login', { loading: false, message: '', type: '' });
       } catch (err) {
         console.error('login error', err);
-        setStatus(err.message, 'error');
+        const message = err?.message || translate('status.loginError');
+        updateAuthForm('login', { loading: false, message, type: 'error' });
+        setStatus(message, 'error');
+        return;
       }
+      updateAuthForm('login', { loading: false, message: '', type: '' });
     }
 
     async function handleRegister(event) {
       event.preventDefault();
+      updateAuthForm('register', { loading: true, message: '', type: '' });
       const payload = {
         name: document.getElementById('registerName').value,
         email: document.getElementById('registerEmail').value,
@@ -2112,10 +2278,15 @@
         state.user = data.user;
         await bootstrapDashboard();
         setStatus(translate('status.registerSuccess'), 'success');
+        updateAuthForm('register', { loading: false, message: '', type: '' });
       } catch (err) {
         console.error('register error', err);
-        setStatus(err.message, 'error');
+        const message = err?.message || translate('status.registerError');
+        updateAuthForm('register', { loading: false, message, type: 'error' });
+        setStatus(message, 'error');
+        return;
       }
+      updateAuthForm('register', { loading: false, message: '', type: '' });
     }
 
     async function bootstrapDashboard() {
@@ -2151,16 +2322,23 @@
     }
 
     async function loadRules() {
+      state.isRulesLoading = true;
+      state.rulesError = null;
+      if (!state.rules.length) {
+        renderTables();
+      }
       try {
         const data = await api('/api/rules');
         state.rules = extractRules(data);
         updateEntitlementsFromResponse(data);
-        renderTables();
+        state.rulesError = null;
       } catch (err) {
         console.error('load rules error', err);
-        state.rules = Array.isArray(state.rules) ? state.rules : [];
-        renderTables();
+        state.rulesError = err?.message ? { message: err.message } : { key: 'status.rulesError' };
         throw err;
+      } finally {
+        state.isRulesLoading = false;
+        renderTables();
       }
     }
 
@@ -2168,6 +2346,8 @@
       const response = await api('/api/rules', { method: 'POST', body: rules });
       state.rules = extractRules(response);
       updateEntitlementsFromResponse(response);
+      state.rulesError = null;
+      state.isRulesLoading = false;
       renderTables();
       if (message) setStatus(message.text, message.type || 'success');
     }
@@ -2175,36 +2355,52 @@
     async function loadOrders(silent) {
       if (state.isOrdersLoading) return;
       state.isOrdersLoading = true;
+      state.ordersError = null;
+      if (!currentOrdersCache.length) {
+        renderOrders([]);
+      }
       try {
         const data = await api('/api/orders');
+        state.ordersError = null;
         renderOrders(Array.isArray(data) ? data : []);
         if (!silent) setStatus(translate('status.ordersRefreshed'), 'info');
       } catch (err) {
+        const message = err?.message || translate('status.ordersError');
+        state.ordersError = err?.message ? { message: err.message } : { key: 'status.ordersError' };
         renderOrders([]);
-        setStatus(err.message, 'error');
+        setStatus(message, 'error');
       } finally {
         await refreshRuleErrors();
         state.isOrdersLoading = false;
+        renderOrders(currentOrdersCache);
       }
     }
 
     async function loadCompletedTrades(silent) {
       if (state.isCompletedTradesLoading) return;
       state.isCompletedTradesLoading = true;
+      state.completedTradesError = null;
+      if (!state.completedTrades.length) {
+        renderCompletedTrades([], []);
+      }
       try {
         const data = await api('/api/trades/completed');
         const trades = Array.isArray(data?.trades) ? data.trades : [];
         const errors = Array.isArray(data?.errors) ? data.errors : [];
+        state.completedTradesError = errors.length && !trades.length ? { message: errors.join(' • ') } : null;
         renderCompletedTrades(trades, errors);
         renderPerformanceMetrics(data?.metrics || null);
         if (!silent) setStatus(translate('status.completedRefreshed'), 'info');
       } catch (err) {
         console.error('completed trades error', err);
-        renderCompletedTrades([], [err.message]);
+        const message = err?.message || translate('status.completedError');
+        state.completedTradesError = err?.message ? { message: err.message } : { key: 'status.completedError' };
+        renderCompletedTrades([], [message]);
         renderPerformanceMetrics(null);
-        setStatus(err.message, 'error');
+        setStatus(message, 'error');
       } finally {
         state.isCompletedTradesLoading = false;
+        renderCompletedTrades(state.completedTrades, state.completedTradesErrors);
       }
     }
 
@@ -2481,6 +2677,8 @@
         const response = await api('/api/rules/sync', { method: 'POST' });
         state.rules = extractRules(response);
         updateEntitlementsFromResponse(response);
+        state.rulesError = null;
+        state.isRulesLoading = false;
         renderTables();
         setStatus(translate('status.manualSynced'), 'info');
       } catch (err) {
@@ -2550,6 +2748,8 @@
         const data = await api(`/api/rules/${id}`, { method: 'DELETE' });
         state.rules = extractRules(data);
         updateEntitlementsFromResponse(data);
+        state.rulesError = null;
+        state.isRulesLoading = false;
         renderTables();
         setStatus(translate('status.ruleDeleted'), 'info');
       } catch (err) {
@@ -2606,12 +2806,20 @@
       state.rules = [];
       state.hasKeys = false;
       state.lastRuleErrorsDigest = '';
+      state.isRulesLoading = false;
+      state.rulesError = null;
+      state.ordersError = null;
       state.completedTrades = [];
       state.completedTradesErrors = [];
+      state.completedTradesError = null;
       state.isCompletedTradesLoading = false;
       state.performanceMetrics = null;
       state.security = defaultSecurityState();
       state.loginMfaRequired = false;
+      if (state.auth) {
+        state.auth.login = { loading: false, message: '', type: '' };
+        state.auth.register = { loading: false, message: '', type: '' };
+      }
       if (state.ordersTimer) clearInterval(state.ordersTimer);
       updateEntitlements(null);
       renderTables();
@@ -2620,6 +2828,7 @@
       renderPerformanceMetrics(null);
       renderSecuritySettings();
       renderLoginMfa();
+      refreshAuthFormMessages();
       if (loginMfaInput) loginMfaInput.value = '';
       if (mfaTokenInput) mfaTokenInput.value = '';
       showLanding();
