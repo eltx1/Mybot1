@@ -168,11 +168,12 @@
     }
 
     .hero {
-      padding: clamp(64px, 10vw, 140px) clamp(20px, 10vw, 140px) clamp(80px, 12vw, 140px);
-      color: #fff;
+      padding: clamp(64px, 10vw, 140px) clamp(20px, 8vw, 140px) clamp(80px, 12vw, 140px);
+      color: #f8fafc;
       position: relative;
       overflow: hidden;
       isolation: isolate;
+      text-shadow: 0 10px 32px rgba(15, 23, 42, 0.45);
     }
 
     .hero::before,
@@ -232,12 +233,13 @@
       font-size: clamp(2.5rem, 5.5vw, 3.9rem);
       margin: 0;
       line-height: 1.05;
+      color: #fefefe;
     }
 
     .hero p {
       margin: 0;
       font-size: clamp(1.05rem, 2.4vw, 1.25rem);
-      color: rgba(226, 232, 240, 0.92);
+      color: rgba(241, 245, 249, 0.94);
       max-width: 560px;
     }
 
@@ -280,6 +282,55 @@
       display: grid;
       gap: 24px;
       align-content: start;
+    }
+
+    @media (max-width: 900px) {
+      .hero {
+        padding-inline: clamp(20px, 6vw, 72px);
+        text-align: center;
+      }
+
+      .hero-content {
+        grid-template-columns: 1fr;
+        justify-items: center;
+      }
+
+      .hero-copy {
+        align-items: center;
+        text-align: center;
+      }
+
+      .hero-actions,
+      .hero-stats {
+        justify-content: center;
+      }
+
+      .hero-visual {
+        max-width: 420px;
+        width: 100%;
+        justify-items: center;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .hero {
+        padding-inline: clamp(16px, 4vw, 32px);
+      }
+
+      .hero-stats {
+        grid-template-columns: 1fr;
+        width: 100%;
+      }
+
+      .hero-actions {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .hero-preview {
+        width: 100%;
+      }
     }
 
     .hero-visual-glow {
@@ -610,11 +661,12 @@
       border-radius: 34px;
       padding: clamp(28px, 5vw, 44px);
       margin-bottom: clamp(32px, 5vw, 52px);
-      color: #f8fbff;
-      background: linear-gradient(140deg, #312e81 0%, #4338ca 55%, #0ea5e9 100%);
+      color: #f8fafc;
+      background: linear-gradient(150deg, #1e1b4b 0%, #3730a3 55%, #0ea5e9 105%);
       overflow: hidden;
-      box-shadow: 0 40px 80px rgba(15, 23, 42, 0.35);
+      box-shadow: 0 40px 80px rgba(15, 23, 42, 0.45);
       isolation: isolate;
+      text-shadow: 0 12px 32px rgba(8, 11, 27, 0.55);
     }
 
     .dashboard-hero::before,
@@ -646,8 +698,8 @@
     }
 
     .dashboard-hero--demo {
-      background: linear-gradient(150deg, #0f172a 0%, #1e293b 55%, #0284c7 110%);
-      box-shadow: 0 40px 80px rgba(2, 8, 23, 0.55);
+      background: linear-gradient(160deg, #0f172a 0%, #1e293b 55%, #0284c7 110%);
+      box-shadow: 0 40px 80px rgba(2, 8, 23, 0.6);
     }
 
     .dashboard-hero--demo::before {
@@ -688,9 +740,9 @@
       font-size: 0.85rem;
       letter-spacing: 0.14em;
       text-transform: uppercase;
-      background: rgba(15, 23, 42, 0.28);
-      border: 1px solid rgba(255, 255, 255, 0.35);
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+      background: rgba(15, 23, 42, 0.38);
+      border: 1px solid rgba(255, 255, 255, 0.45);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
     }
 
     .dashboard-hero__actions {
@@ -805,13 +857,13 @@
 
     .account-switcher__subtitle {
       font-size: 0.95rem;
-      color: inherit;
-      opacity: 0.78;
+      color: rgba(226, 232, 240, 0.85);
+      opacity: 1;
       line-height: 1.35;
     }
 
     .account-switcher__card.is-active .account-switcher__subtitle {
-      opacity: 0.85;
+      opacity: 1;
       color: rgba(30, 41, 59, 0.72);
     }
 
@@ -839,9 +891,9 @@
       position: relative;
       padding: 20px 22px;
       border-radius: 22px;
-      background: rgba(15, 23, 42, 0.2);
-      border: 1px solid rgba(255, 255, 255, 0.28);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+      background: rgba(15, 23, 42, 0.32);
+      border: 1px solid rgba(255, 255, 255, 0.32);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
       display: grid;
       gap: 6px;
       color: #f8fbff;
@@ -910,6 +962,23 @@
       .dashboard-hero .account-switcher {
         width: 100%;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      }
+    }
+
+    @media (max-width: 720px) {
+      .dashboard-hero {
+        text-align: center;
+      }
+
+      .dashboard-hero__header,
+      .dashboard-hero__titles,
+      .dashboard-hero__actions {
+        align-items: center;
+        text-align: center;
+      }
+
+      .dashboard-hero .user-meta {
+        justify-content: center;
       }
     }
 
