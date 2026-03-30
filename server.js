@@ -29,6 +29,7 @@ import { createBinanceClient } from "./binance.js";
 import { summariseCompletedTrades, calculatePerformanceMetrics } from "./lib/trades.js";
 import { fetchMarketSentiment } from "./lib/market-sentiment.js";
 import { fetchCoinPriceUSD, fetchCoinMarketSnapshot } from "./lib/coingecko.js";
+import { PROMPT_DEFAULTS, defaultPromptMap, renderTemplate } from "./lib/prompt-registry.js";
 
 const app = express();
 app.use(express.json({
@@ -218,6 +219,7 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const MFA_ISSUER = process.env.MFA_ISSUER || "My1 Bot";
 const credentialCache = new Map();
 let engineManager;
+let promptCache = defaultPromptMap();
 const ADMIN_EMAILS = new Set((process.env.ADMIN_EMAILS || "")
   .split(",")
   .map(email => email.trim().toLowerCase())
@@ -870,6 +872,56 @@ async function initDb() {
         INDEX idx_ai_feedback_user (user_id, created_at)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS prompt_templates (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        prompt_key VARCHAR(64) NOT NULL UNIQUE,
+        name VARCHAR(191) NOT NULL,
+        usage_type VARCHAR(100) NOT NULL,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        active_version INT NOT NULL DEFAULT 1,
+        default_system_prompt LONGTEXT NOT NULL,
+        default_user_prompt LONGTEXT NOT NULL,
+        default_variables_json LONGTEXT DEFAULT NULL,
+        default_settings_json LONGTEXT DEFAULT NULL,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS prompt_template_versions (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        template_id BIGINT NOT NULL,
+        version INT NOT NULL,
+        system_prompt LONGTEXT NOT NULL,
+        user_prompt LONGTEXT NOT NULL,
+        variables_json LONGTEXT DEFAULT NULL,
+        settings_json LONGTEXT DEFAULT NULL,
+        notes TEXT DEFAULT NULL,
+        is_enabled TINYINT(1) NOT NULL DEFAULT 1,
+        is_default_seed TINYINT(1) NOT NULL DEFAULT 0,
+        created_by INT DEFAULT NULL,
+        created_at BIGINT NOT NULL,
+        UNIQUE KEY uniq_template_version (template_id, version),
+        INDEX idx_prompt_versions_template (template_id, version),
+        CONSTRAINT fk_prompt_version_template FOREIGN KEY (template_id) REFERENCES prompt_templates(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS prompt_template_audit (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        template_id BIGINT NOT NULL,
+        version_id BIGINT DEFAULT NULL,
+        action_type VARCHAR(64) NOT NULL,
+        changed_by INT DEFAULT NULL,
+        previous_payload LONGTEXT DEFAULT NULL,
+        next_payload LONGTEXT DEFAULT NULL,
+        created_at BIGINT NOT NULL,
+        INDEX idx_prompt_audit_template (template_id, created_at),
+        CONSTRAINT fk_prompt_audit_template FOREIGN KEY (template_id) REFERENCES prompt_templates(id) ON DELETE CASCADE,
+        CONSTRAINT fk_prompt_audit_version FOREIGN KEY (version_id) REFERENCES prompt_template_versions(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
 
     await conn.query(`
       CREATE TABLE IF NOT EXISTS plans (
@@ -915,9 +967,94 @@ async function initDb() {
     `);
 
     await seedDefaultPlans(conn);
+    await seedDefaultPrompts(conn);
   } finally {
     conn.release();
   }
+}
+
+function safeJsonParse(value, fallback) {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+async function seedDefaultPrompts(conn) {
+  const now = Date.now();
+  for (const prompt of PROMPT_DEFAULTS) {
+    const variablesJson = JSON.stringify(prompt.variables || []);
+    const settingsJson = JSON.stringify(prompt.settings || {});
+    const [existingRows] = await conn.query(
+      "SELECT id FROM prompt_templates WHERE prompt_key = ? LIMIT 1",
+      [prompt.key]
+    );
+    let templateId = existingRows[0]?.id;
+    if (!templateId) {
+      const [insertResult] = await conn.query(
+        `INSERT INTO prompt_templates
+          (prompt_key, name, usage_type, is_active, active_version, default_system_prompt, default_user_prompt, default_variables_json, default_settings_json, created_at, updated_at)
+         VALUES (?, ?, ?, 1, 1, ?, ?, ?, ?, ?, ?)`,
+        [prompt.key, prompt.name, prompt.usage, prompt.systemPrompt, prompt.userPromptTemplate, variablesJson, settingsJson, now, now]
+      );
+      templateId = insertResult.insertId;
+    }
+    const [versionRows] = await conn.query(
+      "SELECT id FROM prompt_template_versions WHERE template_id = ? AND version = 1 LIMIT 1",
+      [templateId]
+    );
+    if (!versionRows.length) {
+      await conn.query(
+        `INSERT INTO prompt_template_versions
+          (template_id, version, system_prompt, user_prompt, variables_json, settings_json, notes, is_enabled, is_default_seed, created_by, created_at)
+         VALUES (?, 1, ?, ?, ?, ?, ?, 1, 1, NULL, ?)`,
+        [templateId, prompt.systemPrompt, prompt.userPromptTemplate, variablesJson, settingsJson, "Seeded default prompt", now]
+      );
+    }
+  }
+}
+
+async function loadPromptConfigs() {
+  const defaults = defaultPromptMap();
+  try {
+    const [rows] = await pool.query(
+      `SELECT t.id as template_id, t.prompt_key, t.name, t.usage_type, t.is_active, t.active_version,
+              t.default_system_prompt, t.default_user_prompt, t.default_variables_json, t.default_settings_json,
+              v.id as version_id, v.version, v.system_prompt, v.user_prompt, v.variables_json, v.settings_json, v.notes, v.created_by, v.created_at
+         FROM prompt_templates t
+         LEFT JOIN prompt_template_versions v
+           ON v.template_id = t.id AND v.version = t.active_version
+        WHERE t.is_active = 1`
+    );
+    const loaded = { ...defaults };
+    for (const row of rows) {
+      const fallback = defaults[row.prompt_key];
+      if (!fallback) continue;
+      loaded[row.prompt_key] = {
+        ...fallback,
+        templateId: row.template_id,
+        versionId: row.version_id || null,
+        version: row.version || row.active_version || 1,
+        systemPrompt: row.system_prompt || row.default_system_prompt || fallback.systemPrompt,
+        userPromptTemplate: row.user_prompt || row.default_user_prompt || fallback.userPromptTemplate,
+        variables: safeJsonParse(row.variables_json, safeJsonParse(row.default_variables_json, fallback.variables || [])),
+        settings: safeJsonParse(row.settings_json, safeJsonParse(row.default_settings_json, fallback.settings || {})),
+        notes: row.notes || ""
+      };
+    }
+    promptCache = loaded;
+    return loaded;
+  } catch (err) {
+    console.error("Failed to load prompts from DB, using fallback defaults", err);
+    promptCache = defaults;
+    return defaults;
+  }
+}
+
+function getPromptByKey(promptKey) {
+  return promptCache[promptKey] || defaultPromptMap()[promptKey];
 }
 
 function normaliseAssetSymbol(symbol) {
@@ -1573,6 +1710,92 @@ async function listAiFeedback(userId, options = {}) {
     [userId, limit]
   );
   return rows.map(mapAiFeedbackRow);
+}
+
+async function listPromptTemplates() {
+  const [rows] = await pool.query(
+    `SELECT t.id, t.prompt_key, t.name, t.usage_type, t.is_active, t.active_version, t.updated_at,
+            v.id as version_id, v.system_prompt, v.user_prompt, v.variables_json, v.settings_json, v.notes, v.created_by, v.created_at
+       FROM prompt_templates t
+       LEFT JOIN prompt_template_versions v
+         ON v.template_id = t.id AND v.version = t.active_version
+      ORDER BY t.prompt_key ASC`
+  );
+  return rows.map(row => ({
+    id: row.id,
+    key: row.prompt_key,
+    name: row.name,
+    usage: row.usage_type,
+    isActive: Boolean(row.is_active),
+    activeVersion: row.active_version,
+    current: {
+      versionId: row.version_id,
+      systemPrompt: row.system_prompt || "",
+      userPrompt: row.user_prompt || "",
+      variables: safeJSONParse(row.variables_json) || [],
+      settings: safeJSONParse(row.settings_json) || {},
+      notes: row.notes || "",
+      createdBy: row.created_by || null,
+      createdAt: row.created_at || null
+    },
+    updatedAt: row.updated_at
+  }));
+}
+
+async function getPromptTemplateDetails(promptKey) {
+  const [templateRows] = await pool.query("SELECT * FROM prompt_templates WHERE prompt_key = ? LIMIT 1", [promptKey]);
+  if (!templateRows.length) return null;
+  const template = templateRows[0];
+  const [versions] = await pool.query(
+    `SELECT id, version, system_prompt, user_prompt, variables_json, settings_json, notes, is_enabled, is_default_seed, created_by, created_at
+       FROM prompt_template_versions
+      WHERE template_id = ?
+      ORDER BY version DESC`,
+    [template.id]
+  );
+  const [auditRows] = await pool.query(
+    `SELECT id, action_type, changed_by, previous_payload, next_payload, created_at
+       FROM prompt_template_audit
+      WHERE template_id = ?
+      ORDER BY created_at DESC
+      LIMIT 30`,
+    [template.id]
+  );
+  return {
+    id: template.id,
+    key: template.prompt_key,
+    name: template.name,
+    usage: template.usage_type,
+    isActive: Boolean(template.is_active),
+    activeVersion: template.active_version,
+    defaults: {
+      systemPrompt: template.default_system_prompt,
+      userPrompt: template.default_user_prompt,
+      variables: safeJSONParse(template.default_variables_json) || [],
+      settings: safeJSONParse(template.default_settings_json) || {}
+    },
+    versions: versions.map(v => ({
+      id: v.id,
+      version: v.version,
+      systemPrompt: v.system_prompt,
+      userPrompt: v.user_prompt,
+      variables: safeJSONParse(v.variables_json) || [],
+      settings: safeJSONParse(v.settings_json) || {},
+      notes: v.notes || "",
+      isEnabled: Boolean(v.is_enabled),
+      isDefaultSeed: Boolean(v.is_default_seed),
+      createdBy: v.created_by || null,
+      createdAt: v.created_at || null
+    })),
+    audit: auditRows.map(row => ({
+      id: row.id,
+      actionType: row.action_type,
+      changedBy: row.changed_by || null,
+      previous: safeJSONParse(row.previous_payload) || null,
+      next: safeJSONParse(row.next_payload) || null,
+      createdAt: row.created_at
+    }))
+  };
 }
 
 async function getSecuritySettings(userId, options = {}) {
@@ -3016,19 +3239,12 @@ app.post("/api/demo/rules/ai", authRequired(handleAsync(async (req, res) => {
     marketSnapshot,
     summaryLanguage
   };
-  const prompt = [
-    "You are simulating a paper trading setup using CoinGecko USD spot prices.",
-    "Choose one asset from the provided snapshot array and design a single trade.",
-    "Return ONLY minified JSON using this schema: {\"assetId\":\"coingecko-id\",\"assetSymbol\":\"SYMBOL\",\"entryPriceUSD\":number,\"takeProfitPct\":number,\"stopLossPct\":number,\"summary\":\"...\"}.",
-    "Requirements:",
-    "1. entryPriceUSD must be within 1% below or above the current price and represent a realistic limit order.",
-    "2. takeProfitPct must be between 0.5 and 5.",
-    "3. stopLossPct must be between 0.5 and 5.",
-    `4. Write the summary in ${summaryLanguage} and reference concrete metrics from the snapshot.`,
-    "SNAPSHOT:",
-    JSON.stringify(marketSnapshot, null, 2),
-    `BUDGET: ${roundNumber(requestedBudget, 2)} USD`
-  ].join("\n");
+  const promptConfig = getPromptByKey("demo-ai-rule");
+  const prompt = renderTemplate(promptConfig.userPromptTemplate, {
+    summaryLanguage,
+    snapshotText: JSON.stringify(marketSnapshot, null, 2),
+    budgetUSD: roundNumber(requestedBudget, 2)
+  });
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -3038,11 +3254,11 @@ app.post("/api/demo/rules/ai", authRequired(handleAsync(async (req, res) => {
     },
     body: JSON.stringify({
       model,
-      temperature: 0.2,
+      temperature: Number(promptConfig?.settings?.temperature ?? 0.2),
       messages: [
         {
           role: "system",
-          content: "You are an expert crypto analyst building educational demo trades. Think through the data silently then respond only with the requested JSON."
+          content: promptConfig.systemPrompt
         },
         {
           role: "user",
@@ -3569,22 +3785,13 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
 
   const marketSnapshot = await fetchMarketSnapshot(MARKET_SNAPSHOT_LIMIT);
 
-  const snapshotText = JSON.stringify(marketSnapshot, null, 2);
   const summaryLanguage = locale === "ar" ? "Arabic" : "English";
-  const userPrompt = [
-    `You have ${budget} USDT to allocate to a single Binance spot trade that should complete within 24 hours.`,
-    "Use the following live market snapshot (JSON) as your primary data source:",
-    snapshotText,
-    "Before finalizing the trade idea you MUST research the latest public crypto headlines online and factor any breaking news into your reasoning.",
-    "Respond ONLY with minified JSON using this schema: {\"symbol\":\"PAIR\",\"entryPrice\":number,\"exitPrice\":number,\"summary\":\"...\"}.",
-    "Rules:",
-    "1. Choose a symbol from the snapshot with healthy liquidity.",
-    "2. entryPrice must stay within 3% of the snapshot lastPrice and represent a realistic limit maker entry.",
-    "3. exitPrice must be higher than entryPrice by 0.5% - 5% unless news justifies a different range.",
-    "4. Target a quick setup that can realistically fill and close within 24 hours based on liquidity and recent volatility.",
-    "5. Account for Binance trading fees on both entry and exit so the net result remains profitable after fees.",
-    `6. Mention the supporting data and news you considered inside the summary and write it in ${summaryLanguage}.`
-  ].join("\n");
+  const promptConfig = getPromptByKey("ai-role");
+  const userPrompt = renderTemplate(promptConfig.userPromptTemplate, {
+    budget,
+    snapshotText: JSON.stringify(marketSnapshot, null, 2),
+    summaryLanguage
+  });
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -3594,11 +3801,11 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
     },
     body: JSON.stringify({
       model,
-      temperature: 0.3,
+      temperature: Number(promptConfig?.settings?.temperature ?? 0.3),
       messages: [
         {
           role: "system",
-          content: "You are an elite crypto trading analyst with live data access. Conduct up-to-date market research before responding. Think step-by-step privately and return only the JSON result requested."
+          content: promptConfig.systemPrompt
         },
         {
           role: "user",
@@ -3753,16 +3960,11 @@ app.post("/api/ai/feedback", authRequired(handleAsync(async (req, res) => {
     }
   };
 
-  const instructions = [
-    "You are a senior quantitative crypto trading coach.",
-    "You will receive automated rule performance metrics and current market context.",
-    "Analyse the data and propose concrete actions to keep, adjust, pause, or retire rules.",
-    "For each rule give short notes and optional numeric adjustments.",
-    "Return a JSON object with this schema:",
-    '{"updates":[{"ruleId":"...","action":"keep|adjust|pause|retire","confidence":0-1,"priority":0-1,"notes":"...","adjustments":{"entryPrice":number?,"exitPrice":number?,"budgetUSDT":number?}}],"globalInsights":"...","sentimentSummary":"...","nextSteps":["..."]}',
-    "Focus on the provided performance data. Do not hallucinate symbols that are not listed.",
-    "If data is insufficient, flag the rule for manual review instead of guessing."
-  ].join("\n");
+  const promptConfig = getPromptByKey("ai-feedback");
+  const instructions = promptConfig.systemPrompt;
+  const userPrompt = renderTemplate(promptConfig.userPromptTemplate, {
+    aiInputJson: JSON.stringify(aiInput, null, 2)
+  });
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -3772,8 +3974,8 @@ app.post("/api/ai/feedback", authRequired(handleAsync(async (req, res) => {
     },
     body: JSON.stringify({
       model,
-      temperature: 0.2,
-      response_format: { type: "json_object" },
+      temperature: Number(promptConfig?.settings?.temperature ?? 0.2),
+      response_format: promptConfig?.settings?.response_format || { type: "json_object" },
       messages: [
         {
           role: "system",
@@ -3826,6 +4028,109 @@ app.get("/api/ai/feedback", authRequired(handleAsync(async (req, res) => {
   const limit = Math.max(1, Math.min(20, Number(req.query?.limit) || 5));
   const items = await listAiFeedback(req.user.id, { limit });
   res.json({ items });
+})));
+
+app.get("/api/admin/prompts", adminRequired(handleAsync(async (req, res) => {
+  const prompts = await listPromptTemplates();
+  res.json({
+    prompts,
+    adminUrl: `${APP_BASE_URL.replace(/\/$/, "")}/admin-prompts.html`,
+    help: "Login as admin in main dashboard first, then open the admin prompts URL with the same browser session token."
+  });
+})));
+
+app.get("/api/admin/prompts/:key", adminRequired(handleAsync(async (req, res) => {
+  const details = await getPromptTemplateDetails(req.params.key);
+  if (!details) return res.status(404).json({ error: "Prompt not found" });
+  res.json({ prompt: details });
+})));
+
+app.post("/api/admin/prompts/:key/preview", adminRequired(handleAsync(async (req, res) => {
+  const details = await getPromptTemplateDetails(req.params.key);
+  if (!details) return res.status(404).json({ error: "Prompt not found" });
+  const active = details.versions.find(v => v.version === details.activeVersion) || details.versions[0];
+  const variables = req.body?.variables && typeof req.body.variables === "object" ? req.body.variables : {};
+  const rendered = renderTemplate(active?.userPrompt || details.defaults.userPrompt, variables);
+  res.json({
+    key: details.key,
+    rendered: {
+      systemPrompt: active?.systemPrompt || details.defaults.systemPrompt,
+      userPrompt: rendered
+    },
+    requiredVariables: active?.variables || details.defaults.variables || []
+  });
+})));
+
+app.post("/api/admin/prompts/:key", adminRequired(handleAsync(async (req, res) => {
+  const details = await getPromptTemplateDetails(req.params.key);
+  if (!details) return res.status(404).json({ error: "Prompt not found" });
+  const body = req.body || {};
+  const systemPrompt = typeof body.systemPrompt === "string" ? body.systemPrompt.trim() : "";
+  const userPrompt = typeof body.userPrompt === "string" ? body.userPrompt.trim() : "";
+  if (!systemPrompt || !userPrompt) {
+    return res.status(400).json({ error: "System and user prompts cannot be empty." });
+  }
+  const variables = Array.isArray(body.variables) ? body.variables.map(v => String(v).trim()).filter(Boolean) : [];
+  const settings = body.settings && typeof body.settings === "object" ? body.settings : {};
+  const notes = typeof body.notes === "string" ? body.notes.trim() : "";
+  const now = Date.now();
+  const nextVersion = Math.max(1, ...details.versions.map(v => v.version)) + 1;
+  const [result] = await pool.query(
+    `INSERT INTO prompt_template_versions
+      (template_id, version, system_prompt, user_prompt, variables_json, settings_json, notes, is_enabled, is_default_seed, created_by, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?)`,
+    [details.id, nextVersion, systemPrompt, userPrompt, JSON.stringify(variables), JSON.stringify(settings), notes || null, req.user.id, now]
+  );
+  await pool.query(
+    "UPDATE prompt_templates SET active_version = ?, updated_at = ? WHERE id = ?",
+    [nextVersion, now, details.id]
+  );
+  await pool.query(
+    `INSERT INTO prompt_template_audit (template_id, version_id, action_type, changed_by, previous_payload, next_payload, created_at)
+     VALUES (?, ?, 'update', ?, ?, ?, ?)`,
+    [
+      details.id,
+      result.insertId,
+      req.user.id,
+      JSON.stringify(details.versions.find(v => v.version === details.activeVersion) || null),
+      JSON.stringify({ systemPrompt, userPrompt, variables, settings, notes, version: nextVersion }),
+      now
+    ]
+  );
+  await loadPromptConfigs();
+  res.json({ ok: true, activeVersion: nextVersion });
+})));
+
+app.post("/api/admin/prompts/:key/activate", adminRequired(handleAsync(async (req, res) => {
+  const details = await getPromptTemplateDetails(req.params.key);
+  if (!details) return res.status(404).json({ error: "Prompt not found" });
+  const version = Number(req.body?.version);
+  const target = details.versions.find(v => v.version === version);
+  if (!target) return res.status(404).json({ error: "Version not found" });
+  if (!target.isEnabled) return res.status(400).json({ error: "Selected version is disabled." });
+  const now = Date.now();
+  await pool.query("UPDATE prompt_templates SET active_version = ?, updated_at = ? WHERE id = ?", [version, now, details.id]);
+  await pool.query(
+    `INSERT INTO prompt_template_audit (template_id, version_id, action_type, changed_by, previous_payload, next_payload, created_at)
+     VALUES (?, ?, 'activate', ?, ?, ?, ?)`,
+    [details.id, target.id, req.user.id, JSON.stringify({ activeVersion: details.activeVersion }), JSON.stringify({ activeVersion: version }), now]
+  );
+  await loadPromptConfigs();
+  res.json({ ok: true, activeVersion: version });
+})));
+
+app.post("/api/admin/prompts/:key/reset", adminRequired(handleAsync(async (req, res) => {
+  const details = await getPromptTemplateDetails(req.params.key);
+  if (!details) return res.status(404).json({ error: "Prompt not found" });
+  const now = Date.now();
+  await pool.query("UPDATE prompt_templates SET active_version = 1, updated_at = ? WHERE id = ?", [now, details.id]);
+  await pool.query(
+    `INSERT INTO prompt_template_audit (template_id, version_id, action_type, changed_by, previous_payload, next_payload, created_at)
+     VALUES (?, NULL, 'reset_default', ?, ?, ?, ?)`,
+    [details.id, req.user.id, JSON.stringify({ activeVersion: details.activeVersion }), JSON.stringify({ activeVersion: 1 }), now]
+  );
+  await loadPromptConfigs();
+  res.json({ ok: true, activeVersion: 1 });
 })));
 
 app.get("/api/plans", handleAsync(async (req, res) => {
@@ -4087,6 +4392,7 @@ async function getEngineSnapshots() {
 
 async function bootstrap() {
   await initDb();
+  await loadPromptConfigs();
   app.listen(PORT, () => {
     console.log("my1 platform running on port", PORT);
   });
