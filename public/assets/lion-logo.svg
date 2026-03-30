@@ -1,30 +1,23 @@
-<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <radialGradient id="lion-glow" cx="50%" cy="50%" r="65%">
-      <stop offset="0%" stop-color="#fde68a" />
-      <stop offset="45%" stop-color="#f59e0b" />
-      <stop offset="100%" stop-color="#7c2d12" />
-    </radialGradient>
-    <linearGradient id="lion-mane" x1="24" y1="18" x2="108" y2="116" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#fcd34d" />
-      <stop offset="45%" stop-color="#f59e0b" />
-      <stop offset="100%" stop-color="#ea580c" />
-    </linearGradient>
-    <linearGradient id="lion-face" x1="42" y1="36" x2="86" y2="96" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#fff7ed" />
-      <stop offset="100%" stop-color="#facc15" />
-    </linearGradient>
-  </defs>
-  <circle cx="64" cy="64" r="60" fill="url(#lion-glow)" />
-  <path d="M31 52c0-17 14-31 33-31s33 14 33 31c0 10-5 18-12 24 2 6 0 13-6 18-3 3-8 5-15 5s-12-2-15-5c-6-5-8-12-6-18-7-6-12-14-12-24z" fill="url(#lion-mane)" />
-  <path d="M64 42c-14 0-24 11-24 26 0 17 12 28 24 28s24-11 24-28c0-15-10-26-24-26z" fill="url(#lion-face)" />
-  <path d="M54 68c0-4 3-7 10-7s10 3 10 7-3 7-10 7-10-3-10-7z" fill="#b45309" />
-  <path d="M58 63c-3 0-5 2-5 4 0 3 3 5 11 5s11-2 11-5c0-2-2-4-5-4-3 1-9 1-12 0z" fill="#78350f" opacity="0.4" />
-  <circle cx="52" cy="62" r="5" fill="#1f2937" />
-  <circle cx="76" cy="62" r="5" fill="#1f2937" />
-  <circle cx="50" cy="61" r="2" fill="#fef3c7" />
-  <circle cx="74" cy="61" r="2" fill="#fef3c7" />
-  <path d="M64 74c4 0 8 3 8 6 0 5-6 9-8 9s-8-4-8-9c0-3 4-6 8-6z" fill="#7c2d12" />
-  <path d="M64 76c2 0 4 2 4 4 0 3-3 5-4 5s-4-2-4-5c0-2 2-4 4-4z" fill="#facc15" />
-  <path d="M40 60c-4 0-7-2-7-5 0-7 12-17 31-17s31 10 31 17c0 3-3 5-7 5-3-9-13-15-24-15s-21 6-24 15z" fill="#fff7ed" opacity="0.28" />
+<svg width="420" height="120" viewBox="0 0 420 120" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="logoTitle logoDesc">
+  <title id="logoTitle">Lion Ai</title>
+  <desc id="logoDesc">Lion Ai wordmark with a robot icon on a gold plate.</desc>
+  <rect x="2" y="2" width="416" height="116" rx="22" fill="#D9A90A"/>
+  <rect x="2" y="2" width="416" height="116" rx="22" stroke="#0B0B0D" stroke-opacity="0.25" stroke-width="3"/>
+  <text x="24" y="82" fill="#050507" font-family="Georgia, 'Times New Roman', serif" font-size="76" font-weight="700" letter-spacing="0.5">Lion Ai</text>
+  <g transform="translate(340 24)" stroke="#0C0C10" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="8" y="18" width="56" height="50" rx="10" fill="none"/>
+    <rect x="16" y="0" width="40" height="32" rx="8" fill="none"/>
+    <circle cx="30" cy="16" r="3" fill="#0C0C10"/>
+    <circle cx="42" cy="16" r="3" fill="#0C0C10"/>
+    <path d="M26 24H46"/>
+    <path d="M0 46H8M64 46H72"/>
+    <path d="M22 68V92M50 68V92"/>
+    <rect x="16" y="92" width="12" height="10" rx="3" fill="none"/>
+    <rect x="44" y="92" width="12" height="10" rx="3" fill="none"/>
+    <path d="M22 0V-6M50 0V-6"/>
+    <circle cx="22" cy="-8" r="2" fill="#0C0C10"/>
+    <circle cx="50" cy="-8" r="2" fill="#0C0C10"/>
+    <path d="M72 46l8-6"/>
+    <circle cx="82" cy="39" r="2" fill="#0C0C10"/>
+  </g>
 </svg>
