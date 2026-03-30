@@ -1,56 +1,94 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Admin Prompt Manager</title>
-  <link rel="stylesheet" href="/styles/main.css" />
-  <style>
-    body{padding:20px} .layout{display:grid;grid-template-columns:280px 1fr;gap:16px}
-    .panel{border:1px solid #ddd;border-radius:10px;padding:12px;background:#fff}
-    .prompt-item{padding:8px;border:1px solid #eee;border-radius:8px;margin-bottom:8px;cursor:pointer}
-    textarea,input{width:100%;margin-top:6px;margin-bottom:10px}
-    textarea{min-height:140px}.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    .muted{color:#666;font-size:12px}.ok{color:#1f8b24}.err{color:#b42318}
-  </style>
+  <title>Lion Ai | Admin Prompt Manager</title>
+  <link rel="stylesheet" href="/styles/main.css?v=20260330" />
 </head>
-<body>
-  <h1>Prompt Admin</h1>
-  <p class="muted">Admin URL: <code>/admin-prompts.html</code> (requires admin token from dashboard login).</p>
-  <div id="status" class="muted"></div>
-  <div class="layout">
-    <div class="panel">
-      <h3>Prompts</h3>
-      <div id="promptList"></div>
-    </div>
-    <div class="panel">
-      <h3 id="editorTitle">Select prompt</h3>
-      <div class="row">
-        <div>
-          <label>System Prompt</label>
-          <textarea id="systemPrompt"></textarea>
+<body class="admin-body">
+  <div class="site admin-site">
+    <header class="site-header">
+      <div class="container">
+        <div class="brand">
+          <span class="logo" aria-hidden="true">
+            <img src="/assets/lion-logo.svg" alt="Lion Ai Bot" loading="lazy">
+          </span>
+          <div class="tagline">
+            <strong>Prompt Control Center</strong>
+            <span>Manage templates, versions, and audit trail.</span>
+          </div>
         </div>
-        <div>
-          <label>User Prompt</label>
-          <textarea id="userPrompt"></textarea>
+        <div class="header-actions">
+          <a class="ghost-link" href="/">Back to dashboard</a>
         </div>
       </div>
-      <label>Variables (JSON array)</label>
-      <textarea id="variables" style="min-height:80px"></textarea>
-      <label>Settings (JSON object)</label>
-      <textarea id="settings" style="min-height:80px"></textarea>
-      <label>Notes</label>
-      <input id="notes" />
-      <p class="muted">Warning: saving creates a new version and activates it.</p>
-      <button id="previewBtn">Preview</button>
-      <button id="saveBtn">Save New Version</button>
-      <button id="resetBtn">Reset to Default v1</button>
-      <div id="message" class="muted"></div>
-      <h4>Versions</h4>
-      <div id="versions"></div>
-      <h4>Audit Trail</h4>
-      <pre id="audit" style="max-height:180px;overflow:auto;background:#f8f8f8;padding:8px"></pre>
-    </div>
+    </header>
+
+    <main class="admin-main">
+      <section class="admin-intro card">
+        <h1>Admin Prompt Manager</h1>
+        <p class="muted">Admin URL: <code>/admin-prompts.html</code> (requires admin token from dashboard login).</p>
+        <div id="status" class="status muted" aria-live="polite"></div>
+      </section>
+
+      <section class="admin-layout">
+        <aside class="card admin-sidebar">
+          <h3>Prompts</h3>
+          <div id="promptList" class="admin-prompt-list"></div>
+        </aside>
+
+        <article class="card admin-editor">
+          <h3 id="editorTitle">Select prompt</h3>
+          <div class="admin-grid-2">
+            <label>
+              <span>System Prompt</span>
+              <textarea id="systemPrompt"></textarea>
+            </label>
+            <label>
+              <span>User Prompt</span>
+              <textarea id="userPrompt"></textarea>
+            </label>
+          </div>
+
+          <label>
+            <span>Variables (JSON array)</span>
+            <textarea id="variables" class="admin-short-textarea"></textarea>
+          </label>
+
+          <label>
+            <span>Settings (JSON object)</span>
+            <textarea id="settings" class="admin-short-textarea"></textarea>
+          </label>
+
+          <label>
+            <span>Notes</span>
+            <input id="notes" />
+          </label>
+
+          <p class="muted">Warning: saving creates a new version and activates it.</p>
+
+          <div class="admin-actions">
+            <button id="previewBtn" class="btn secondary" type="button">Preview</button>
+            <button id="saveBtn" class="btn primary" type="button">Save New Version</button>
+            <button id="resetBtn" class="btn ghost" type="button">Reset to Default v1</button>
+          </div>
+
+          <div id="message" class="muted" aria-live="polite"></div>
+
+          <div class="admin-extra-grid">
+            <section>
+              <h4>Versions</h4>
+              <div id="versions" class="admin-versions"></div>
+            </section>
+            <section>
+              <h4>Audit Trail</h4>
+              <pre id="audit" class="admin-audit"></pre>
+            </section>
+          </div>
+        </article>
+      </section>
+    </main>
   </div>
   <script src="/js/admin-prompts.js"></script>
 </body>
