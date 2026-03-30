@@ -7,7 +7,8 @@
     "start": "node server.js",
     "dev": "NODE_ENV=development node server.js",
     "postinstall": "node -e \"const fs=require('fs');const p='./data';if(!fs.existsSync(p))fs.mkdirSync(p,{recursive:true});if(!fs.existsSync(p+'/rules.json'))fs.writeFileSync(p+'/rules.json','[]');\"",
-    "test": "node --test"
+    "test": "node --test",
+    "build": "node --check server.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -18,7 +19,7 @@
     "otplib": "^12.0.1",
     "mysql2": "^3.9.7",
     "node-fetch": "^3.3.2",
-    "stripe": "^15.12.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "axios": "^1.8.4"
   }
 }

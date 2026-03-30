@@ -14,8 +14,10 @@ import mysql from "mysql2/promise";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import fetch from "node-fetch";
-import Stripe from "stripe";
 import rateLimit from "express-rate-limit";
+import { createNowPaymentsService } from "./core/payments/nowpayments.service.js";
+import { createPaymentService } from "./core/payments/payment.service.js";
+import { createNowPaymentsWebhookController } from "./core/payments/webhook.controller.js";
 import { authenticator } from "otplib";
 import {
   randomUUID,
@@ -100,30 +102,25 @@ const dbConfig = {
 
 const pool = mysql.createPool(dbConfig);
 
-const stripeClient = (() => {
-  const key = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_KEY || "";
-  if (!key) return null;
-  try {
-    return new Stripe(key, { apiVersion: "2024-06-20" });
-  } catch (err) {
-    console.error("Failed to initialise Stripe client", err.message);
-    return null;
-  }
-})();
-
-const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_SIGNING_SECRET || "";
-
-const CRYPTOMUS_MERCHANT_ID = process.env.CRYPTOMUS_MERCHANT_ID || process.env.CRYPTOMUS_MERCHANT || "";
-const CRYPTOMUS_PAYMENT_KEY = process.env.CRYPTOMUS_PAYMENT_KEY || process.env.CRYPTOMUS_API_KEY || "";
-const CRYPTOMUS_SUCCESS_URL = process.env.CRYPTOMUS_SUCCESS_URL || "";
-const CRYPTOMUS_CANCEL_URL = process.env.CRYPTOMUS_CANCEL_URL || "";
+const NOWPAYMENTS_API_KEY = process.env.NOWPAYMENTS_API_KEY || "";
+const NOWPAYMENTS_IPN_SECRET = process.env.NOWPAYMENTS_IPN_SECRET || "";
 
 const APP_BASE_URL = process.env.APP_BASE_URL || process.env.FRONTEND_URL || process.env.PUBLIC_URL || "http://localhost:8080";
 
 const PAYMENT_PROVIDERS = {
-  stripe: Boolean(stripeClient),
-  cryptomus: Boolean(CRYPTOMUS_MERCHANT_ID && CRYPTOMUS_PAYMENT_KEY)
+  nowpayments: Boolean(NOWPAYMENTS_API_KEY && NOWPAYMENTS_IPN_SECRET)
 };
+
+const nowPaymentsService = createNowPaymentsService({
+  apiKey: NOWPAYMENTS_API_KEY,
+  ipnSecret: NOWPAYMENTS_IPN_SECRET,
+  logger: console
+});
+
+const paymentService = createPaymentService({
+  appBaseUrl: APP_BASE_URL,
+  logger: console
+});
 
 const DEFAULT_SENTIMENT_LIMIT = Math.max(3, Number(process.env.MARKET_SENTIMENT_HEADLINES || 6));
 const MARKET_SNAPSHOT_LIMIT = Math.max(6, Number(process.env.MARKET_SNAPSHOT_LIMIT || 12));
@@ -157,8 +154,7 @@ const SUBSCRIPTION_STATUS = {
 };
 
 const SUBSCRIPTION_PROVIDERS = {
-  STRIPE: "stripe",
-  CRYPTOMUS: "cryptomus"
+  NOWPAYMENTS: "nowpayments"
 };
 
 const DEFAULT_PLANS = [
@@ -458,63 +454,6 @@ function summarizeRulePerformance(rule, trades = []) {
   };
 }
 
-function canonicaliseCryptomusPayload(value) {
-  if (!value || typeof value !== "object") return value;
-  if (Array.isArray(value)) {
-    return value.map(canonicaliseCryptomusPayload);
-  }
-  const sorted = {};
-  for (const key of Object.keys(value).sort()) {
-    sorted[key] = canonicaliseCryptomusPayload(value[key]);
-  }
-  return sorted;
-}
-
-function cryptomusPayloadBuffer(payload, rawBody) {
-  if (rawBody && rawBody.length) {
-    return Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(String(rawBody));
-  }
-  if (Buffer.isBuffer(payload)) {
-    return payload;
-  }
-  if (typeof payload === "string") {
-    return Buffer.from(payload, "utf8");
-  }
-  if (!payload || typeof payload !== "object") {
-    return Buffer.from("{}", "utf8");
-  }
-  try {
-    const canonical = canonicaliseCryptomusPayload(payload);
-    return Buffer.from(JSON.stringify(canonical));
-  } catch (err) {
-    console.error("Failed to serialise Cryptomus payload", err.message);
-    return Buffer.from("{}", "utf8");
-  }
-}
-
-function generateCryptomusSignature(payload, rawBody) {
-  const buffer = cryptomusPayloadBuffer(payload, rawBody);
-  const base64 = buffer.toString("base64");
-  return createHash("md5").update(base64 + String(CRYPTOMUS_PAYMENT_KEY || "")).digest("hex");
-}
-
-function verifyCryptomusSignature(payload, signature, rawBody) {
-  if (!signature) return false;
-  const expected = generateCryptomusSignature(payload, rawBody);
-  return typeof signature === "string" && signature.toLowerCase() === expected.toLowerCase();
-}
-
-function extractCryptomusResult(payload) {
-  if (!payload || typeof payload !== "object") return {};
-  const candidates = [payload.result, payload.data];
-  for (const candidate of candidates) {
-    if (candidate && typeof candidate === "object") {
-      return candidate;
-    }
-  }
-  return payload;
-}
-
 function createSubscriptionReference(userId, planId, provider) {
   const base = randomUUID().replace(/-/g, "").slice(0, 12);
   const prefix = String(provider || "checkout").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12) || "checkout";
@@ -674,6 +613,12 @@ async function getPlanByCode(code) {
   return mapPlanRow(rows[0]);
 }
 
+async function ensureColumn(conn, tableName, columnName, definition) {
+  const [rows] = await conn.query(`SHOW COLUMNS FROM ${tableName} LIKE ?`, [columnName]);
+  if (Array.isArray(rows) && rows.length) return;
+  await conn.query(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+}
+
 async function initDb() {
   const conn = await pool.getConnection();
   try {
@@ -683,6 +628,10 @@ async function initDb() {
         name VARCHAR(100) NOT NULL,
         email VARCHAR(191) NOT NULL UNIQUE,
         password_hash VARCHAR(255) NOT NULL,
+        payment_provider VARCHAR(32) DEFAULT NULL,
+        payment_invoice_id VARCHAR(191) DEFAULT NULL,
+        payment_status VARCHAR(32) DEFAULT NULL,
+        payment_crypto_currency VARCHAR(32) DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
@@ -947,12 +896,16 @@ async function initDb() {
         user_id INT NOT NULL,
         plan_id INT NOT NULL,
         provider VARCHAR(32) NOT NULL,
+        payment_provider VARCHAR(32) DEFAULT NULL,
         status VARCHAR(32) NOT NULL,
+        payment_status VARCHAR(32) DEFAULT NULL,
         reference VARCHAR(128) NOT NULL,
         provider_session_id VARCHAR(191) DEFAULT NULL,
         provider_invoice_id VARCHAR(191) DEFAULT NULL,
+        payment_invoice_id VARCHAR(191) DEFAULT NULL,
         amount_usd DECIMAL(10,2) NOT NULL DEFAULT 0,
         currency VARCHAR(16) NOT NULL DEFAULT 'USD',
+        payment_crypto_currency VARCHAR(32) DEFAULT NULL,
         started_at DATETIME DEFAULT NULL,
         expires_at DATETIME DEFAULT NULL,
         metadata TEXT DEFAULT NULL,
@@ -966,6 +919,34 @@ async function initDb() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS payment_logs (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        provider VARCHAR(32) NOT NULL,
+        event_type VARCHAR(120) NOT NULL,
+        reference VARCHAR(128) DEFAULT NULL,
+        transaction_id VARCHAR(191) DEFAULT NULL,
+        invoice_id VARCHAR(191) DEFAULT NULL,
+        status VARCHAR(64) DEFAULT NULL,
+        error_message TEXT DEFAULT NULL,
+        payload LONGTEXT DEFAULT NULL,
+        headers_json LONGTEXT DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_payment_reference (reference),
+        INDEX idx_payment_provider (provider, created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await ensureColumn(conn, "users", "payment_provider", "VARCHAR(32) DEFAULT NULL");
+    await ensureColumn(conn, "users", "payment_invoice_id", "VARCHAR(191) DEFAULT NULL");
+    await ensureColumn(conn, "users", "payment_status", "VARCHAR(32) DEFAULT NULL");
+    await ensureColumn(conn, "users", "payment_crypto_currency", "VARCHAR(32) DEFAULT NULL");
+
+    await ensureColumn(conn, "user_subscriptions", "payment_provider", "VARCHAR(32) DEFAULT NULL");
+    await ensureColumn(conn, "user_subscriptions", "payment_invoice_id", "VARCHAR(191) DEFAULT NULL");
+    await ensureColumn(conn, "user_subscriptions", "payment_status", "VARCHAR(32) DEFAULT NULL");
+    await ensureColumn(conn, "user_subscriptions", "payment_crypto_currency", "VARCHAR(32) DEFAULT NULL");
     await seedDefaultPlans(conn);
     await seedDefaultPrompts(conn);
   } finally {
@@ -2059,12 +2040,16 @@ function mapSubscriptionRow(row) {
     userId: row.user_id,
     planId: row.plan_id,
     provider: row.provider,
+    paymentProvider: row.payment_provider || row.provider || null,
     status: row.status,
+    paymentStatus: row.payment_status || row.status || null,
     reference: row.reference,
     providerSessionId: row.provider_session_id || null,
     providerInvoiceId: row.provider_invoice_id || null,
+    paymentInvoiceId: row.payment_invoice_id || row.provider_invoice_id || null,
     amountUSD: row.amount_usd !== null && row.amount_usd !== undefined ? Number(row.amount_usd) : 0,
     currency: row.currency || "USD",
+    paymentCryptoCurrency: row.payment_crypto_currency || null,
     startedAt: row.started_at ? new Date(row.started_at).toISOString() : null,
     expiresAt: row.expires_at ? new Date(row.expires_at).toISOString() : null,
     metadata: safeJSONParse(row.metadata),
@@ -2296,6 +2281,38 @@ async function getSubscriptionEntitlements(userId, options = {}) {
   };
 }
 
+async function logPaymentEvent({
+  provider,
+  eventType,
+  reference = null,
+  transactionId = null,
+  invoiceId = null,
+  status = null,
+  payload = null,
+  headers = null,
+  errorMessage = null
+}) {
+  try {
+    await pool.query(
+      `INSERT INTO payment_logs (provider, event_type, reference, transaction_id, invoice_id, status, error_message, payload, headers_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        provider || "unknown",
+        eventType || "event",
+        reference,
+        transactionId,
+        invoiceId,
+        status,
+        errorMessage,
+        payload ? safeJSONStringify(payload) : null,
+        headers ? safeJSONStringify(headers) : null
+      ]
+    );
+  } catch (err) {
+    console.error("Failed to write payment log", err.message);
+  }
+}
+
 async function createPendingSubscription({
   userId,
   planId,
@@ -2305,32 +2322,42 @@ async function createPendingSubscription({
   currency = "USD",
   metadata,
   providerSessionId,
-  providerInvoiceId
+  providerInvoiceId,
+  paymentStatus,
+  paymentCryptoCurrency
 }) {
   if (!userId || !planId || !provider || !reference) return null;
   const payload = [
     userId,
     planId,
     provider,
+    provider,
     SUBSCRIPTION_STATUS.PENDING,
+    paymentStatus || SUBSCRIPTION_STATUS.PENDING,
     reference,
     providerSessionId || null,
     providerInvoiceId || null,
+    providerInvoiceId || null,
     Number(amountUSD) || 0,
     currency || "USD",
+    paymentCryptoCurrency || null,
     safeJSONStringify(metadata)
   ];
   await pool.query(
-    `INSERT INTO user_subscriptions (user_id, plan_id, provider, status, reference, provider_session_id, provider_invoice_id, amount_usd, currency, metadata)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO user_subscriptions (user_id, plan_id, provider, payment_provider, status, payment_status, reference, provider_session_id, provider_invoice_id, payment_invoice_id, amount_usd, currency, payment_crypto_currency, metadata)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        plan_id = VALUES(plan_id),
        provider = VALUES(provider),
+       payment_provider = VALUES(payment_provider),
        status = VALUES(status),
+       payment_status = VALUES(payment_status),
        provider_session_id = VALUES(provider_session_id),
        provider_invoice_id = VALUES(provider_invoice_id),
+       payment_invoice_id = VALUES(payment_invoice_id),
        amount_usd = VALUES(amount_usd),
        currency = VALUES(currency),
+       payment_crypto_currency = VALUES(payment_crypto_currency),
        metadata = VALUES(metadata)`,
     payload
   );
@@ -2356,6 +2383,14 @@ async function markSubscriptionStatus(reference, status, updates = {}) {
   if (Object.prototype.hasOwnProperty.call(updates, "currency")) {
     sets.push("currency = ?");
     values.push(updates.currency || "USD");
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "paymentStatus")) {
+    sets.push("payment_status = ?");
+    values.push(updates.paymentStatus || null);
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "paymentCryptoCurrency")) {
+    sets.push("payment_crypto_currency = ?");
+    values.push(updates.paymentCryptoCurrency || null);
   }
   if (Object.prototype.hasOwnProperty.call(updates, "startedAt")) {
     sets.push("started_at = ?");
@@ -2393,16 +2428,22 @@ async function activateSubscription(reference, overrides = {}) {
     ? Number(overrides.amountUSD) || 0
     : (current.amountUSD || Number(plan.priceUSD) || 0);
   const currency = overrides.currency || current.currency || "USD";
+  const paymentStatus = overrides.paymentStatus || current.paymentStatus || SUBSCRIPTION_STATUS.ACTIVE;
+  const paymentCryptoCurrency = overrides.paymentCryptoCurrency || current.paymentCryptoCurrency || current.currency || null;
   const metadata = Object.prototype.hasOwnProperty.call(overrides, "metadata") ? overrides.metadata : current.metadata;
 
   await pool.query(
     `UPDATE user_subscriptions
-     SET status = ?, provider_invoice_id = COALESCE(?, provider_invoice_id),
-         started_at = ?, expires_at = ?, amount_usd = ?, currency = ?, metadata = ?, updated_at = CURRENT_TIMESTAMP
+     SET status = ?, payment_status = ?, payment_provider = ?, provider_invoice_id = COALESCE(?, provider_invoice_id), payment_invoice_id = COALESCE(?, payment_invoice_id),
+         payment_crypto_currency = ?, started_at = ?, expires_at = ?, amount_usd = ?, currency = ?, metadata = ?, updated_at = CURRENT_TIMESTAMP
      WHERE id = ? LIMIT 1`,
     [
       SUBSCRIPTION_STATUS.ACTIVE,
+      paymentStatus,
+      current.provider || SUBSCRIPTION_PROVIDERS.NOWPAYMENTS,
       overrides.providerInvoiceId || current.providerInvoiceId || null,
+      overrides.providerInvoiceId || current.paymentInvoiceId || current.providerInvoiceId || null,
+      paymentCryptoCurrency,
       start,
       expires,
       amountUSD,
@@ -2417,6 +2458,19 @@ async function activateSubscription(reference, overrides = {}) {
      SET status = ?, updated_at = CURRENT_TIMESTAMP
      WHERE user_id = ? AND status = ? AND id <> ?`,
     [SUBSCRIPTION_STATUS.EXPIRED, current.userId, SUBSCRIPTION_STATUS.ACTIVE, current.id]
+  );
+
+  await pool.query(
+    `UPDATE users
+     SET payment_provider = ?, payment_invoice_id = ?, payment_status = ?, payment_crypto_currency = ?
+     WHERE id = ? LIMIT 1`,
+    [
+      current.provider || SUBSCRIPTION_PROVIDERS.NOWPAYMENTS,
+      overrides.providerInvoiceId || current.providerInvoiceId || null,
+      paymentStatus,
+      paymentCryptoCurrency,
+      current.userId
+    ]
   );
 
   return findSubscriptionByReference(reference);
@@ -3400,7 +3454,7 @@ app.get("/api/billing/subscription", authRequired(handleAsync(async (req, res) =
 })));
 
 app.post("/api/billing/checkout", authRequired(handleAsync(async (req, res) => {
-  const { planId, provider } = req.body || {};
+  const { planId, currency } = req.body || {};
   const plan = await getPlanById(Number(planId));
   if (!plan || !plan.isActive) {
     return res.status(404).json({ error: "Plan not found" });
@@ -3408,148 +3462,95 @@ app.post("/api/billing/checkout", authRequired(handleAsync(async (req, res) => {
   if (!(plan.priceUSD > 0)) {
     return res.status(400).json({ error: "Plan price must be greater than zero" });
   }
-
-  const normalizedProvider = typeof provider === "string" ? provider.toLowerCase() : "";
-  if (normalizedProvider === SUBSCRIPTION_PROVIDERS.STRIPE && !PAYMENT_PROVIDERS.stripe) {
-    return res.status(400).json({ error: "Stripe payments are not configured" });
-  }
-  if (normalizedProvider === SUBSCRIPTION_PROVIDERS.CRYPTOMUS && !PAYMENT_PROVIDERS.cryptomus) {
-    return res.status(400).json({ error: "Cryptomus payments are not configured" });
-  }
-  if (!Object.values(SUBSCRIPTION_PROVIDERS).includes(normalizedProvider)) {
-    return res.status(400).json({ error: "Unsupported payment provider" });
+  if (!PAYMENT_PROVIDERS.nowpayments) {
+    return res.status(400).json({ error: "NOWPayments is not configured" });
   }
 
-  const reference = createSubscriptionReference(req.user.id, plan.id, normalizedProvider);
+  const payCurrency = paymentService.mapCurrency(currency, "USDT");
+  const reference = createSubscriptionReference(req.user.id, plan.id, SUBSCRIPTION_PROVIDERS.NOWPAYMENTS);
   const amountUSD = Number(plan.priceUSD) || 0;
-  const successUrl = buildAbsoluteUrl(`/billing/success?ref=${encodeURIComponent(reference)}`);
-  const cancelUrl = buildAbsoluteUrl(`/billing/cancel?ref=${encodeURIComponent(reference)}`);
-  let checkoutPayload = {};
+  const { successUrl, cancelUrl } = paymentService.createReturnUrls(reference);
+  const metadata = paymentService.buildSubscriptionMetadata({ userId: req.user.id, planId: plan.id, reference });
 
-  if (normalizedProvider === SUBSCRIPTION_PROVIDERS.STRIPE) {
-    if (!stripeClient) {
-      return res.status(500).json({ error: "Stripe client not initialised" });
-    }
-    const session = await stripeClient.checkout.sessions.create({
-      mode: "payment",
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      client_reference_id: reference,
-      customer_email: req.user.email || undefined,
-      metadata: {
-        userId: String(req.user.id),
-        planId: String(plan.id),
-        planCode: plan.code,
-        reference
-      },
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: "usd",
-            unit_amount: Math.round(amountUSD * 100),
-            product_data: {
-              name: plan.name,
-              description: plan.description || undefined
-            }
-          }
-        }
-      ]
-    });
-    await createPendingSubscription({
-      userId: req.user.id,
-      planId: plan.id,
-      provider: SUBSCRIPTION_PROVIDERS.STRIPE,
+  const paymentPayload = {
+    price_amount: amountUSD,
+    price_currency: "usd",
+    pay_currency: payCurrency.toLowerCase(),
+    order_id: reference,
+    order_description: plan.description || plan.name,
+    ipn_callback_url: buildAbsoluteUrl("/api/webhook/nowpayments"),
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    is_fixed_rate: true,
+    metadata
+  };
+
+  await logPaymentEvent({
+    provider: SUBSCRIPTION_PROVIDERS.NOWPAYMENTS,
+    eventType: "checkout.create.request",
+    reference,
+    status: SUBSCRIPTION_STATUS.PENDING,
+    payload: paymentPayload
+  });
+
+  const payment = await nowPaymentsService.createPayment(paymentPayload);
+  const paymentData = payment?.result || payment;
+  const paymentUrl = paymentData?.invoice_url || paymentData?.payment_url || paymentData?.pay_address_url || null;
+  const invoiceId = paymentData?.invoice_id || paymentData?.payment_id || null;
+
+  if (!paymentUrl) {
+    await logPaymentEvent({
+      provider: SUBSCRIPTION_PROVIDERS.NOWPAYMENTS,
+      eventType: "checkout.create.error",
       reference,
-      amountUSD,
-      currency: "USD",
-      metadata: {
-        provider: SUBSCRIPTION_PROVIDERS.STRIPE,
-        sessionId: session.id
-      },
-      providerSessionId: session.id,
-      providerInvoiceId: session.payment_intent || null
+      status: "error",
+      payload: payment
     });
-    checkoutPayload = {
-      sessionId: session.id,
-      url: session.url,
-      reference
-    };
-  } else {
-    const callbackUrl = buildAbsoluteUrl("/webhooks/cryptomus");
-    const invoicePayload = {
-      amount: amountUSD.toFixed(2),
-      currency: "USD",
-      order_id: reference,
-      lifetime: 3600,
-      url_success: CRYPTOMUS_SUCCESS_URL ? buildAbsoluteUrl(CRYPTOMUS_SUCCESS_URL) : successUrl,
-      url_error: CRYPTOMUS_CANCEL_URL ? buildAbsoluteUrl(CRYPTOMUS_CANCEL_URL) : cancelUrl,
-      callback_url: callbackUrl,
-      url_callback: callbackUrl,
-      description: plan.description || plan.name
-    };
-    if (req.user.email) invoicePayload.payer_email = req.user.email;
-    const signature = generateCryptomusSignature(invoicePayload);
-    const response = await fetch("https://api.cryptomus.com/v1/payment", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        merchant: CRYPTOMUS_MERCHANT_ID,
-        sign: signature
-      },
-      body: JSON.stringify(invoicePayload)
-    });
-    const invoiceData = await response.json().catch(() => ({}));
-    const invoiceResult = extractCryptomusResult(invoiceData);
-    const stateToken = String(invoiceData?.state ?? invoiceData?.status ?? invoiceResult?.state ?? invoiceResult?.status ?? "").toLowerCase();
-    const failedStates = new Set(["error", "failed", "canceled", "cancelled", "expired"]);
-    if (!response.ok || failedStates.has(stateToken)) {
-      console.error("Cryptomus checkout error", invoiceData);
-      const errorMessage = invoiceData?.message || invoiceData?.error || invoiceResult?.message || invoiceResult?.error || "Cryptomus API error";
-      return res.status(response.ok ? 502 : response.status).json({ error: errorMessage });
-    }
-    const paymentUrl = invoiceResult?.result_url
-      || invoiceResult?.url
-      || invoiceResult?.payment_url
-      || invoiceResult?.redirect_url
-      || invoiceResult?.checkout_url;
-    if (!paymentUrl) {
-      const errorMessage = invoiceData?.message || invoiceData?.error || "Cryptomus did not return a payment URL";
-      return res.status(502).json({ error: errorMessage });
-    }
-    const invoiceId = invoiceResult?.uuid
-      || invoiceResult?.payment_uuid
-      || invoiceResult?.invoice_uuid
-      || invoiceData?.uuid
-      || invoiceData?.payment_uuid
-      || invoiceData?.invoice_uuid
-      || null;
-    await createPendingSubscription({
-      userId: req.user.id,
-      planId: plan.id,
-      provider: SUBSCRIPTION_PROVIDERS.CRYPTOMUS,
-      reference,
-      amountUSD,
-      currency: "USD",
-      metadata: {
-        provider: SUBSCRIPTION_PROVIDERS.CRYPTOMUS,
-        invoiceId,
-        response: invoiceData,
-        result: invoiceResult
-      },
-      providerSessionId: invoiceId,
-      providerInvoiceId: invoiceId
-    });
-    checkoutPayload = {
-      url: paymentUrl,
-      invoiceId,
-      address: invoiceResult?.address || invoiceData?.address,
-      reference
-    };
+    return res.status(502).json({ error: "NOWPayments did not return a payment URL" });
   }
+
+  await createPendingSubscription({
+    userId: req.user.id,
+    planId: plan.id,
+    provider: SUBSCRIPTION_PROVIDERS.NOWPAYMENTS,
+    reference,
+    amountUSD,
+    currency: "USD",
+    paymentStatus: SUBSCRIPTION_STATUS.PENDING,
+    paymentCryptoCurrency: payCurrency,
+    metadata: {
+      ...metadata,
+      payCurrency,
+      conversionTarget: "USDT",
+      nowpayments: paymentData
+    },
+    providerSessionId: String(invoiceId || reference),
+    providerInvoiceId: invoiceId ? String(invoiceId) : null
+  });
+
+  await logPaymentEvent({
+    provider: SUBSCRIPTION_PROVIDERS.NOWPAYMENTS,
+    eventType: "checkout.create.success",
+    reference,
+    status: SUBSCRIPTION_STATUS.PENDING,
+    payload: paymentData,
+    invoiceId: invoiceId ? String(invoiceId) : null,
+    transactionId: paymentData?.payment_id ? String(paymentData.payment_id) : null
+  });
 
   const subscription = await getSubscriptionEntitlements(req.user.id, { includeHistory: true });
-  res.json({ ok: true, provider: normalizedProvider, reference, checkout: checkoutPayload, subscription });
+  res.json({
+    ok: true,
+    provider: SUBSCRIPTION_PROVIDERS.NOWPAYMENTS,
+    reference,
+    checkout: {
+      paymentLink: paymentUrl,
+      checkoutLink: paymentUrl,
+      invoiceId: invoiceId ? String(invoiceId) : null,
+      payCurrency
+    },
+    subscription
+  });
 })));
 
 app.get("/api/orders", authRequired(handleAsync(async (req, res) => {
@@ -4139,8 +4140,7 @@ app.get("/api/plans", handleAsync(async (req, res) => {
     plans,
     currency: "USD",
     providers: {
-      stripe: PAYMENT_PROVIDERS.stripe,
-      cryptomus: PAYMENT_PROVIDERS.cryptomus
+      nowpayments: PAYMENT_PROVIDERS.nowpayments
     }
   });
 }));
@@ -4216,102 +4216,15 @@ app.get("/healthz", handleAsync(async (req, res) => {
   }
 }));
 
-app.post("/webhooks/stripe", async (req, res) => {
-  if (!stripeClient || !STRIPE_WEBHOOK_SECRET) {
-    return res.json({ ok: true });
-  }
-  const signature = req.headers["stripe-signature"];
-  if (!signature || !req.rawBody) {
-    return res.status(400).json({ error: "Missing Stripe signature" });
-  }
-  let event;
-  try {
-    event = stripeClient.webhooks.constructEvent(req.rawBody, signature, STRIPE_WEBHOOK_SECRET);
-  } catch (err) {
-    console.error("Stripe webhook signature error", err.message);
-    return res.status(400).json({ error: "Invalid Stripe signature" });
-  }
-
-  try {
-    if (event.type === "checkout.session.completed") {
-      const session = event.data?.object || {};
-      const reference = session.client_reference_id || session.metadata?.reference;
-      if (reference) {
-        await activateSubscription(reference, {
-          providerInvoiceId: session.payment_intent || session.id,
-          amountUSD: session.amount_total ? Number(session.amount_total) / 100 : undefined,
-          currency: session.currency ? session.currency.toUpperCase() : "USD",
-          metadata: { eventId: event.id, type: event.type }
-        });
-      }
-    } else if (event.type === "checkout.session.expired" || event.type === "checkout.session.async_payment_failed") {
-      const session = event.data?.object || {};
-      const reference = session.client_reference_id || session.metadata?.reference;
-      if (reference) {
-        await markSubscriptionStatus(reference, SUBSCRIPTION_STATUS.FAILED, {
-          metadata: { eventId: event.id, type: event.type }
-        });
-      }
-    }
-  } catch (err) {
-    console.error("Stripe webhook handling error", err);
-    return res.status(500).json({ error: "Failed to process Stripe webhook" });
-  }
-
-  res.json({ received: true });
+const nowPaymentsWebhookHandler = createNowPaymentsWebhookController({
+  nowPaymentsService,
+  paymentService,
+  activateSubscription,
+  markSubscriptionStatus,
+  logPaymentEvent
 });
 
-app.post("/webhooks/cryptomus", async (req, res) => {
-  if (!PAYMENT_PROVIDERS.cryptomus) {
-    return res.json({ ok: true });
-  }
-  const payload = req.body || {};
-  const signature = req.headers?.sign || req.headers?.["x-sign"];
-  const merchantHeader = req.headers?.merchant;
-  if (CRYPTOMUS_MERCHANT_ID && merchantHeader && merchantHeader !== CRYPTOMUS_MERCHANT_ID) {
-    return res.status(400).json({ error: "Invalid merchant" });
-  }
-  const rawBody = req.rawBody;
-  if (!verifyCryptomusSignature(payload, signature, rawBody)) {
-    console.error("Cryptomus webhook signature mismatch", payload);
-    return res.status(400).json({ error: "Invalid signature" });
-  }
-
-  const result = extractCryptomusResult(payload);
-
-  const reference = payload?.order_id
-    || payload?.orderId
-    || payload?.merchant_order_id
-    || result?.order_id
-    || result?.orderId
-    || result?.merchant_order_id;
-  if (!reference) {
-    return res.json({ ok: true });
-  }
-
-  const status = String(payload?.status || payload?.state || result?.status || result?.state || "").toLowerCase();
-  const successfulStates = new Set(["paid", "paid_over", "paid_partially", "success"]);
-  const failedStates = new Set(["cancelled", "canceled", "failed", "expired", "error"]);
-
-  try {
-    if (successfulStates.has(status)) {
-      const amount = Number(payload?.amount || payload?.paid_amount || payload?.payment_amount || result?.amount || result?.paid_amount || result?.payment_amount);
-      await activateSubscription(reference, {
-        providerInvoiceId: payload?.uuid || payload?.payment_uuid || payload?.invoice_uuid || result?.uuid || result?.payment_uuid || result?.invoice_uuid || null,
-        amountUSD: Number.isFinite(amount) ? amount : undefined,
-        currency: payload?.currency || result?.currency || "USD",
-        metadata: payload
-      });
-    } else if (failedStates.has(status)) {
-      await markSubscriptionStatus(reference, SUBSCRIPTION_STATUS.FAILED, { metadata: payload });
-    }
-  } catch (err) {
-    console.error("Cryptomus webhook handling error", err);
-    return res.status(500).json({ error: "Failed to process Cryptomus webhook" });
-  }
-
-  res.json({ received: true });
-});
+app.post("/api/webhook/nowpayments", nowPaymentsWebhookHandler);
 
 app.use("/", express.static(path.join(__dirname, "public"), {
   setHeaders: (res, filePath) => {

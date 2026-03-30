@@ -311,8 +311,9 @@
           historyTitle: "Recent payments",
           historyEmpty: "No subscription history yet.",
           pendingNotice: "Awaiting payment confirmation for {{name}}.",
-          providerStripe: "Stripe",
-          providerCryptomus: "Cryptomus",
+          providerNowpayments: "NOWPayments",
+          currencyLabel: "Pay with",
+          currencyPlaceholder: "Select coin",
           noPlans: "Plans will be available soon."
         },
         ruleErrors: {
@@ -631,8 +632,9 @@
           historyTitle: "سجل الدفعات",
           historyEmpty: "لا يوجد سجل دفعات بعد.",
           pendingNotice: "بانتظار تأكيد الدفع لباقـة {{name}}.",
-          providerStripe: "سترايب",
-          providerCryptomus: "كريبتومس",
+          providerNowpayments: "ناو بايمنتس",
+          currencyLabel: "الدفع بعملة",
+          currencyPlaceholder: "اختر العملة",
           noPlans: "سيتم إتاحة الباقات قريبًا."
         },
         ruleErrors: {
@@ -671,7 +673,7 @@
       user: null,
       rules: [],
       plans: [],
-      providers: { stripe: false, cryptomus: false },
+      providers: { nowpayments: false },
       auth: {
         login: { loading: false, message: '', type: '' },
         register: { loading: false, message: '', type: '' }
@@ -974,8 +976,7 @@
         const data = await api('/api/plans');
         state.plans = Array.isArray(data?.plans) ? data.plans : [];
         state.providers = {
-          stripe: Boolean(data?.providers?.stripe),
-          cryptomus: Boolean(data?.providers?.cryptomus)
+          nowpayments: Boolean(data?.providers?.nowpayments)
         };
         renderPricingCards();
         renderDashboardPlans();
@@ -1889,8 +1890,7 @@
         const actions = document.createElement('div');
         actions.className = 'plan-actions';
         const providers = [];
-        if (availableProviders.stripe) providers.push({ provider: 'stripe', label: translate('subscription.payWithStripe') });
-        if (availableProviders.cryptomus) providers.push({ provider: 'cryptomus', label: translate('subscription.payWithCryptomus') });
+        if (availableProviders.nowpayments) providers.push({ provider: 'nowpayments', label: translate('subscription.providerNowpayments') });
         if (!isAuthenticated) {
           const note = document.createElement('p');
           note.className = 'provider-label';
@@ -1914,12 +1914,21 @@
         } else {
           for (const item of providers) {
             const btn = document.createElement('button');
-            btn.className = item.provider === 'stripe' ? 'btn primary' : 'btn ghost';
+            btn.className = 'btn primary';
             btn.type = 'button';
             btn.dataset.action = 'checkout';
             btn.dataset.planId = plan.id;
             btn.dataset.provider = item.provider;
             btn.textContent = item.label;
+            const currencySelect = document.createElement('select');
+            currencySelect.className = 'input';
+            currencySelect.dataset.currencyFor = String(plan.id);
+            currencySelect.innerHTML = ['USDT','USDC','BTC','ETH','BNB'].map((coin, idx) => `<option value="${coin}"${idx===0?' selected':''}>${coin}</option>`).join('');
+            const label = document.createElement('label');
+            label.className = 'provider-label';
+            label.textContent = `${translate('subscription.currencyLabel')}:`;
+            actions.appendChild(label);
+            actions.appendChild(currencySelect);
             actions.appendChild(btn);
           }
         }
@@ -2117,7 +2126,7 @@
       }
     }
 
-    async function startCheckout(planId, provider, trigger) {
+    async function startCheckout(planId, provider, trigger, currency) {
       if (!planId || !provider) return;
       if (!state.token || !state.user) {
         setStatus(translate('subscription.loginRequired'), 'error');
@@ -2145,10 +2154,10 @@
         setStatus(translate('status.checkoutStarted'), 'info');
         const response = await api('/api/billing/checkout', {
           method: 'POST',
-          body: { planId: Number(planId), provider }
+          body: { planId: Number(planId), currency }
         });
         updateEntitlementsFromResponse(response);
-        const url = response?.checkout?.url;
+        const url = response?.checkout?.paymentLink || response?.checkout?.checkoutLink || response?.checkout?.url;
         if (url) {
           window.location.href = url;
           return;
@@ -2857,7 +2866,9 @@
       const checkoutBtn = event.target.closest('[data-action="checkout"]');
       if (checkoutBtn) {
         event.preventDefault();
-        startCheckout(checkoutBtn.dataset.planId, checkoutBtn.dataset.provider, checkoutBtn);
+        const select = document.querySelector(`[data-currency-for="${checkoutBtn.dataset.planId}"]`);
+        const currency = select?.value || 'USDT';
+        startCheckout(checkoutBtn.dataset.planId, checkoutBtn.dataset.provider, checkoutBtn, currency);
         return;
       }
       const deleteBtn = event.target.closest('[data-action="delete"]');
