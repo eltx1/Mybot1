@@ -25,6 +25,27 @@ test('summariseCompletedTrades returns empty when no round trip', () => {
   assert.equal(result.length, 0);
 });
 
+
+test('summariseCompletedTrades handles string buyer flags correctly', () => {
+  const trades = [
+    { id: 1, isBuyer: 'true', price: '100', qty: '0.2', quoteQty: '20', time: 1000 },
+    { id: 2, isBuyer: 'false', price: '105', qty: '0.2', quoteQty: '21', time: 2000 }
+  ];
+  const result = summariseCompletedTrades(trades, 'SOLUSDT');
+  assert.equal(result.length, 1);
+  assert.equal(result[0].quantity, 0.2);
+  assert.equal(result[0].profit, 1);
+});
+
+test('summariseCompletedTrades does not close trade on partial sell', () => {
+  const trades = [
+    { id: 1, isBuyer: true, price: '10', qty: '2', quoteQty: '20', time: 1000 },
+    { id: 2, isBuyer: false, price: '11', qty: '1', quoteQty: '11', time: 2000 }
+  ];
+  const result = summariseCompletedTrades(trades, 'ETHUSDT');
+  assert.equal(result.length, 0);
+});
+
 test('calculatePerformanceMetrics aggregates trade outcomes', () => {
   const trades = [
     { symbol: 'BTCUSDT', profit: 10, profitPct: 5, durationMs: 60000, quoteAsset: 'USDT' },
