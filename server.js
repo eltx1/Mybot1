@@ -28,7 +28,7 @@ import {
 } from "crypto";
 import EngineManager from "./engine/manager.js";
 import { createBinanceClient } from "./binance.js";
-import { summariseCompletedTrades, calculatePerformanceMetrics } from "./lib/trades.js";
+import { summariseCompletedTrades, calculatePerformanceMetrics, filterCompletedTradesBySymbolStartTime } from "./lib/trades.js";
 import { fetchMarketSentiment } from "./lib/market-sentiment.js";
 import { fetchCoinPriceUSD, fetchCoinMarketSnapshot } from "./lib/coingecko.js";
 import { PROMPT_DEFAULTS, defaultPromptMap, renderTemplate } from "./lib/prompt-registry.js";
@@ -392,9 +392,20 @@ async function fetchUserTradeSummaries({ userId, symbols, limit = 200 } = {}) {
   let targetSymbols = Array.isArray(symbols) && symbols.length
     ? symbols.map(s => String(s || "").toUpperCase()).filter(Boolean)
     : null;
+  let symbolStartTimes = {};
 
   if (!targetSymbols) {
     const rules = await readRules(userId);
+    symbolStartTimes = rules.reduce((acc, rule) => {
+      const symbol = String(rule?.symbol || "").toUpperCase();
+      const createdAt = Number(rule?.createdAt || 0);
+      if (!symbol || !Number.isFinite(createdAt) || createdAt <= 0) return acc;
+      const existing = Number(acc[symbol] || 0);
+      if (!existing || createdAt < existing) {
+        acc[symbol] = createdAt;
+      }
+      return acc;
+    }, {});
     targetSymbols = Array.from(new Set(rules.map(r => (r.symbol || "").toUpperCase()).filter(Boolean)));
   } else {
     targetSymbols = Array.from(new Set(targetSymbols));
@@ -424,10 +435,11 @@ async function fetchUserTradeSummaries({ userId, symbols, limit = 200 } = {}) {
     }
   }
 
-  trades.sort((a, b) => Number(b?.closedAt || 0) - Number(a?.closedAt || 0));
-  const metrics = calculatePerformanceMetrics(trades);
+  const filteredTrades = filterCompletedTradesBySymbolStartTime(trades, symbolStartTimes);
+  filteredTrades.sort((a, b) => Number(b?.closedAt || 0) - Number(a?.closedAt || 0));
+  const metrics = calculatePerformanceMetrics(filteredTrades);
   return {
-    trades,
+    trades: filteredTrades,
     metrics,
     errors,
     symbols: targetSymbols,
