@@ -258,6 +258,9 @@
           manualAdded: "Manual rule added.",
           manualSynced: "Rules synced with engine.",
           aiGenerated: "AI rule generated successfully.",
+          aiGenerating: "Generating your AI rule and validating it...",
+          aiRequestFailed: "AI generation failed. Please try again.",
+          aiRuleNotPersisted: "The AI response was received, but the rule was not saved. Please retry.",
           ordersRefreshed: "Open orders refreshed.",
           completedRefreshed: "Completed trades updated.",
           rulesLoading: "Loading your rules...",
@@ -579,6 +582,9 @@
           manualAdded: "تمت إضافة القاعدة اليدوية.",
           manualSynced: "تمت مزامنة القواعد مع المحرك.",
           aiGenerated: "تم توليد قاعدة ذكاء اصطناعي بنجاح.",
+          aiGenerating: "جارٍ توليد قاعدة الذكاء الاصطناعي والتحقق منها...",
+          aiRequestFailed: "فشل توليد القاعدة بالذكاء الاصطناعي. حاول مرة أخرى.",
+          aiRuleNotPersisted: "تم استلام رد الذكاء الاصطناعي لكن لم يتم حفظ القاعدة. أعد المحاولة.",
           ordersRefreshed: "تم تحديث الأوامر المفتوحة.",
           completedRefreshed: "تم تحديث الصفقات المكتملة.",
           rulesLoading: "جاري تحميل القواعد...",
@@ -678,6 +684,7 @@
         login: { loading: false, message: '', type: '' },
         register: { loading: false, message: '', type: '' }
       },
+      aiRequest: { loading: false, message: '', type: '' },
       entitlements: null,
       ordersTimer: null,
       statusTimer: null,
@@ -727,6 +734,7 @@
     const syncRulesBtn = document.getElementById('syncRules');
     const aiForm = document.getElementById('aiForm');
     const aiGenerateBtn = document.getElementById('aiGenerate');
+    const aiFormStatus = document.getElementById('aiFormStatus');
     const aiBudgetInput = document.getElementById('aiBudget');
     const aiModelInput = document.getElementById('aiModel');
     const manualTableBody = document.querySelector('#manualRulesTable tbody');
@@ -857,6 +865,7 @@
       renderSecuritySettings();
       renderLoginMfa();
       refreshAuthFormMessages();
+      updateAiFormStatus();
     }
 
     function updateAuthForm(form, overrides = {}) {
@@ -896,6 +905,25 @@
     function refreshAuthFormMessages() {
       updateAuthForm('login');
       updateAuthForm('register');
+    }
+
+    function updateAiFormStatus(overrides = {}) {
+      if (!state.aiRequest) return;
+      if (typeof overrides.loading === 'boolean') state.aiRequest.loading = overrides.loading;
+      if (Object.prototype.hasOwnProperty.call(overrides, 'message')) {
+        state.aiRequest.message = overrides.message || '';
+      }
+      if (Object.prototype.hasOwnProperty.call(overrides, 'type')) {
+        state.aiRequest.type = overrides.type || '';
+      }
+      if (!aiFormStatus) return;
+      const loading = Boolean(state.aiRequest.loading);
+      const message = loading ? translate('status.aiGenerating') : (state.aiRequest.message || '');
+      const classes = ['form-status'];
+      if (loading) classes.push('loading');
+      if (!loading && message) classes.push(state.aiRequest.type === 'success' ? 'success' : 'error');
+      aiFormStatus.textContent = message;
+      aiFormStatus.className = classes.join(' ');
     }
 
     function setStatus(message, type = 'info') {
@@ -2787,25 +2815,36 @@
       }
       aiGenerateBtn.dataset.loading = 'true';
       aiGenerateBtn.disabled = true;
+      updateAiFormStatus({ loading: true, message: '', type: '' });
       try {
         const data = await api('/api/ai-role', {
           method: 'POST',
           body: { budgetUSDT: budget, locale: state.language }
         });
+        const createdRuleId = data?.rule?.id;
         updateEntitlementsFromResponse(data);
         await loadRules();
+        if (createdRuleId && !state.rules.some(rule => rule.id === createdRuleId)) {
+          throw new Error(translate('status.aiRuleNotPersisted'));
+        }
         if (data && data.rule && data.rule.aiModel) {
           const modelInput = document.getElementById('aiModel');
           if (modelInput) modelInput.value = data.rule.aiModel;
         }
+        updateAiFormStatus({ loading: false, message: translate('status.aiGenerated'), type: 'success' });
         setStatus(translate('status.aiGenerated'), 'success');
         await loadOrders(true);
       } catch (err) {
         console.error('ai error', err);
-        setStatus(err.message, 'error');
+        const message = (err && err.message ? err.message : '').trim() || translate('status.aiRequestFailed');
+        updateAiFormStatus({ loading: false, message, type: 'error' });
+        setStatus(message, 'error');
       } finally {
         aiGenerateBtn.disabled = false;
         delete aiGenerateBtn.dataset.loading;
+        if (state.aiRequest.loading) {
+          updateAiFormStatus({ loading: false });
+        }
       }
     }
 
@@ -2825,6 +2864,7 @@
       state.performanceMetrics = null;
       state.security = defaultSecurityState();
       state.loginMfaRequired = false;
+      state.aiRequest = { loading: false, message: '', type: '' };
       if (state.auth) {
         state.auth.login = { loading: false, message: '', type: '' };
         state.auth.register = { loading: false, message: '', type: '' };
@@ -2838,6 +2878,7 @@
       renderSecuritySettings();
       renderLoginMfa();
       refreshAuthFormMessages();
+      updateAiFormStatus();
       if (loginMfaInput) loginMfaInput.value = '';
       if (mfaTokenInput) mfaTokenInput.value = '';
       showLanding();

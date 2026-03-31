@@ -2949,3 +2949,52 @@ footer {
     overflow-x: auto;
   }
 }
+
+/* ===== 2026-03-31 dashboard consistency hotfix ===== */
+#dashboard {
+  background: linear-gradient(180deg, #090b10 0%, #0f131b 56%, #141925 100%);
+}
+
+.dashboard-hero {
+  background: linear-gradient(135deg, rgba(18, 21, 30, 0.96), rgba(12, 14, 20, 0.94));
+  border: 1px solid rgba(var(--accent-rgb), 0.2);
+}
+
+.dashboard-hero__inner {
+  background: linear-gradient(165deg, rgba(20, 24, 34, 0.95), rgba(14, 17, 25, 0.92));
+  border: 1px solid rgba(var(--accent-rgb), 0.18);
+}
+
+.dashboard-hero__titles .muted,
+.account-switcher__subtitle,
+.highlight-meta {
+  color: rgba(232, 236, 243, 0.78);
+}
+
+.account-switcher {
+  background: rgba(10, 13, 20, 0.72);
+  border: 1px solid rgba(var(--accent-rgb), 0.18);
+}
+
+.account-switcher__card {
+  background: linear-gradient(145deg, rgba(21, 26, 37, 0.9), rgba(15, 18, 27, 0.9));
+  border: 1px solid rgba(136, 148, 173, 0.36);
+  color: #f5f7fb;
+}
+
+.account-switcher__card.is-active {
+  background: linear-gradient(135deg, rgba(233, 179, 27, 0.2), rgba(187, 136, 3, 0.22));
+  border-color: rgba(var(--accent-rgb), 0.5);
+  color: #fff8e7;
+}
+
+.account-switcher__card.is-active .account-switcher__subtitle {
+  color: rgba(255, 239, 196, 0.92);
+}
+
+.highlight-card,
+.highlight-card.is-empty {
+  background: linear-gradient(160deg, rgba(20, 23, 33, 0.92), rgba(14, 17, 24, 0.96));
+  border: 1px solid rgba(var(--accent-rgb), 0.16);
+  color: #f5f7fb;
+}
