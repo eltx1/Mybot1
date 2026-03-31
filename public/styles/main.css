@@ -3077,3 +3077,159 @@ footer {
   background: rgba(28, 31, 42, 0.12);
   color: #1c1f2a;
 }
+
+/* ===== 2026-03-31 dashboard systemic dark-surface contrast fix ===== */
+#dashboard {
+  --dashboard-surface: linear-gradient(160deg, rgba(20, 24, 34, 0.95), rgba(12, 15, 22, 0.97));
+  --dashboard-surface-soft: rgba(255, 255, 255, 0.04);
+  --dashboard-border: rgba(var(--accent-rgb), 0.2);
+  --dashboard-border-soft: rgba(255, 255, 255, 0.12);
+  --dashboard-text: #f8fafc;
+  --dashboard-text-soft: rgba(226, 232, 240, 0.84);
+  --dashboard-text-muted: rgba(203, 213, 225, 0.74);
+}
+
+#dashboard .card,
+#dashboard .table-wrapper,
+#dashboard .trade-card,
+#dashboard .metric-card,
+#dashboard .mfa-secret,
+#dashboard .empty-state,
+#dashboard .ai-summary,
+#dashboard tbody tr {
+  background: var(--dashboard-surface);
+  border-color: var(--dashboard-border);
+  color: var(--dashboard-text);
+}
+
+#dashboard .card h2,
+#dashboard .card h3,
+#dashboard .card h4,
+#dashboard .table-header h2,
+#dashboard .trade-symbol,
+#dashboard .metric .value,
+#dashboard .metric-value {
+  color: var(--dashboard-text);
+}
+
+#dashboard p,
+#dashboard .muted,
+#dashboard .card p,
+#dashboard .form-status,
+#dashboard .trade-closed,
+#dashboard .trade-card-footer,
+#dashboard .completed-trades-note,
+#dashboard .metric .label,
+#dashboard .metric-label,
+#dashboard tr.empty-row td,
+#dashboard .empty-state,
+#dashboard tbody td::before {
+  color: var(--dashboard-text-muted);
+}
+
+#dashboard th,
+#dashboard td,
+#dashboard label,
+#dashboard .symbol,
+#dashboard .metric .subvalue,
+#dashboard .trade-card-footer span {
+  color: var(--dashboard-text-soft);
+}
+
+#dashboard table,
+#dashboard .table-wrapper {
+  border: 1px solid var(--dashboard-border-soft);
+  border-radius: 16px;
+}
+
+#dashboard thead th {
+  background: rgba(var(--accent-rgb), 0.12);
+  color: #fef3c7;
+  border-bottom-color: var(--dashboard-border-soft);
+}
+
+#dashboard tbody tr,
+#dashboard tbody tr:nth-child(even),
+#dashboard tbody tr:hover {
+  background: transparent;
+}
+
+#dashboard tbody td {
+  border-bottom-color: rgba(148, 163, 184, 0.22);
+}
+
+#dashboard .metric,
+#dashboard .mfa-secret,
+#dashboard .ai-summary {
+  background: var(--dashboard-surface-soft);
+  border: 1px solid var(--dashboard-border-soft);
+}
+
+#dashboard .metric.profit.positive {
+  background: rgba(34, 197, 94, 0.16);
+  color: #4ade80;
+}
+
+#dashboard .metric.profit.negative {
+  background: rgba(239, 68, 68, 0.16);
+  color: #f87171;
+}
+
+#dashboard .metric.profit.neutral {
+  background: rgba(148, 163, 184, 0.16);
+  color: #e2e8f0;
+}
+
+#dashboard .pill,
+#dashboard .status-pill,
+#dashboard .trade-chip {
+  background: rgba(var(--accent-rgb), 0.16);
+  border-color: rgba(var(--accent-rgb), 0.46);
+  color: #ffe8ae;
+}
+
+#dashboard .pill.success {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+}
+
+#dashboard .pill.danger {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+#dashboard .status-pill.pending,
+#dashboard .pill.info {
+  background: rgba(14, 165, 233, 0.2);
+  color: #7dd3fc;
+}
+
+#dashboard .empty-state {
+  border-style: solid;
+  border-color: var(--dashboard-border-soft);
+}
+
+#dashboard .switch .slider {
+  background: rgba(148, 163, 184, 0.35);
+}
+
+#dashboard .switch input:checked + .slider {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+}
+
+@media (max-width: 768px) {
+  #dashboard tbody tr {
+    background: var(--dashboard-surface);
+    border: 1px solid var(--dashboard-border-soft);
+    border-radius: 14px;
+    padding: 12px;
+  }
+
+  #dashboard tbody td {
+    color: var(--dashboard-text-soft);
+  }
+
+  #dashboard tbody td::before {
+    color: rgba(250, 250, 252, 0.86);
+  }
+}
