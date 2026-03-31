@@ -628,6 +628,7 @@ async function initDb() {
         name VARCHAR(100) NOT NULL,
         email VARCHAR(191) NOT NULL UNIQUE,
         password_hash VARCHAR(255) NOT NULL,
+        is_admin TINYINT(1) NOT NULL DEFAULT 0,
         payment_provider VARCHAR(32) DEFAULT NULL,
         payment_invoice_id VARCHAR(191) DEFAULT NULL,
         payment_status VARCHAR(32) DEFAULT NULL,
@@ -938,6 +939,7 @@ async function initDb() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
+    await ensureColumn(conn, "users", "is_admin", "TINYINT(1) NOT NULL DEFAULT 0 AFTER password_hash");
     await ensureColumn(conn, "users", "payment_provider", "VARCHAR(32) DEFAULT NULL");
     await ensureColumn(conn, "users", "payment_invoice_id", "VARCHAR(191) DEFAULT NULL");
     await ensureColumn(conn, "users", "payment_status", "VARCHAR(32) DEFAULT NULL");
@@ -1598,13 +1600,13 @@ function startDemoEngine() {
 
 async function findUserByEmail(email) {
   if (!email) return null;
-  const [rows] = await pool.query("SELECT id, name, email, password_hash FROM users WHERE email = ? LIMIT 1", [email]);
+  const [rows] = await pool.query("SELECT id, name, email, is_admin, password_hash FROM users WHERE email = ? LIMIT 1", [email]);
   return rows[0] || null;
 }
 
 async function findUserById(id) {
   if (!id) return null;
-  const [rows] = await pool.query("SELECT id, name, email FROM users WHERE id = ? LIMIT 1", [id]);
+  const [rows] = await pool.query("SELECT id, name, email, is_admin FROM users WHERE id = ? LIMIT 1", [id]);
   return rows[0] || null;
 }
 
@@ -2992,7 +2994,9 @@ function authRequired(handler) {
 }
 
 function isAdminUser(user) {
-  if (!user || ADMIN_EMAILS.size === 0) return false;
+  if (!user) return false;
+  if (Number(user.is_admin) === 1) return true;
+  if (ADMIN_EMAILS.size === 0) return false;
   const email = typeof user.email === "string" ? user.email.toLowerCase() : "";
   return ADMIN_EMAILS.has(email);
 }
