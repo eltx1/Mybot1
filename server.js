@@ -1283,6 +1283,8 @@ async function listDemoOrders(userId, { limit = 50 } = {}) {
      FROM demo_orders o
      INNER JOIN demo_rules r ON r.id = o.rule_id
      WHERE o.user_id = ?
+       AND o.side = 'BUY'
+       AND o.linked_trade_id IS NULL
      ORDER BY o.id DESC
      LIMIT ?`,
     [userId, size]
