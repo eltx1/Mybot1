@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { summariseCompletedTrades, calculatePerformanceMetrics } from '../lib/trades.js';
+import { summariseCompletedTrades, calculatePerformanceMetrics, filterCompletedTradesBySymbolStartTime } from '../lib/trades.js';
 
 process.env.MARKET_FEED_DISABLED = 'true';
 const strategyModulePromise = import('../strategy.js');
@@ -39,6 +39,20 @@ test('calculatePerformanceMetrics aggregates trade outcomes', () => {
   assert.equal(metrics.worstTrade.symbol, 'ETHUSDT');
   assert.equal(metrics.averageHoldMs, 90000);
   assert.equal(metrics.bySymbol[0].symbol, 'BTCUSDT');
+});
+
+test('filterCompletedTradesBySymbolStartTime ignores history before rule creation', () => {
+  const rows = [
+    { symbol: 'ETHUSDT', openedAt: 1000, closedAt: 2000, profit: 5 },
+    { symbol: 'ETHUSDT', openedAt: 6000, closedAt: 7000, profit: 2 },
+    { symbol: 'BTCUSDT', openedAt: 3000, closedAt: 4000, profit: 1 }
+  ];
+  const filtered = filterCompletedTradesBySymbolStartTime(rows, {
+    ETHUSDT: 5000
+  });
+  assert.equal(filtered.length, 2);
+  assert.equal(filtered[0].closedAt, 7000);
+  assert.equal(filtered[1].symbol, 'BTCUSDT');
 });
 
 test('engine persists rule state with stops and closures', async () => {
