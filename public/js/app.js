@@ -259,8 +259,20 @@
           manualSynced: "Rules synced with engine.",
           aiGenerated: "AI rule generated successfully.",
           aiGenerating: "Generating your AI rule and validating it...",
+          aiStagePreparingMarket: "Preparing market snapshot...",
+          aiStageSendingRequest: "Sending request to AI service...",
+          aiStageReceivedResponse: "AI response received.",
+          aiStageValidatingResponse: "Validating AI response format...",
+          aiStageCreatingRule: "Creating AI rule...",
+          aiStageRefreshingRules: "Refreshing AI rules list...",
+          aiStageSuccess: "AI rule created and synced successfully.",
           aiRequestFailed: "AI generation failed. Please try again.",
           aiRuleNotPersisted: "The AI response was received, but the rule was not saved. Please retry.",
+          aiResponseMalformed: "The AI service returned an invalid response payload.",
+          aiResponseInvalid: "The AI response format is invalid and could not be converted into a rule.",
+          aiSaveFailed: "AI response was valid, but saving the rule failed. Please try again.",
+          aiListRefreshFailed: "Rule was saved, but refreshing your AI rules failed. Please reload the page.",
+          aiUnknownFailure: "AI rule creation stopped unexpectedly. Please try again.",
           ordersRefreshed: "Open orders refreshed.",
           completedRefreshed: "Completed trades updated.",
           rulesLoading: "Loading your rules...",
@@ -583,8 +595,20 @@
           manualSynced: "تمت مزامنة القواعد مع المحرك.",
           aiGenerated: "تم توليد قاعدة ذكاء اصطناعي بنجاح.",
           aiGenerating: "جارٍ توليد قاعدة الذكاء الاصطناعي والتحقق منها...",
+          aiStagePreparingMarket: "جارٍ تجهيز بيانات السوق...",
+          aiStageSendingRequest: "جارٍ إرسال الطلب لخدمة الذكاء الاصطناعي...",
+          aiStageReceivedResponse: "تم استلام رد الذكاء الاصطناعي.",
+          aiStageValidatingResponse: "جارٍ التحقق من تنسيق رد الذكاء الاصطناعي...",
+          aiStageCreatingRule: "جارٍ إنشاء قاعدة الذكاء الاصطناعي...",
+          aiStageRefreshingRules: "جارٍ تحديث قائمة قواعد الذكاء الاصطناعي...",
+          aiStageSuccess: "تم إنشاء القاعدة ومزامنتها بنجاح.",
           aiRequestFailed: "فشل توليد القاعدة بالذكاء الاصطناعي. حاول مرة أخرى.",
           aiRuleNotPersisted: "تم استلام رد الذكاء الاصطناعي لكن لم يتم حفظ القاعدة. أعد المحاولة.",
+          aiResponseMalformed: "خدمة الذكاء الاصطناعي أعادت استجابة غير صالحة.",
+          aiResponseInvalid: "تنسيق رد الذكاء الاصطناعي غير صالح ولا يمكن تحويله إلى قاعدة.",
+          aiSaveFailed: "رد الذكاء الاصطناعي صالح لكن حفظ القاعدة فشل. حاول مرة أخرى.",
+          aiListRefreshFailed: "تم حفظ القاعدة لكن تحديث القائمة فشل. أعد تحميل الصفحة.",
+          aiUnknownFailure: "توقفت عملية إنشاء القاعدة بشكل غير متوقع. حاول مرة أخرى.",
           ordersRefreshed: "تم تحديث الأوامر المفتوحة.",
           completedRefreshed: "تم تحديث الصفقات المكتملة.",
           rulesLoading: "جاري تحميل القواعد...",
@@ -684,7 +708,7 @@
         login: { loading: false, message: '', type: '' },
         register: { loading: false, message: '', type: '' }
       },
-      aiRequest: { loading: false, message: '', type: '' },
+      aiRequest: { loading: false, message: '', type: '', stageKey: '', requestId: '' },
       entitlements: null,
       ordersTimer: null,
       statusTimer: null,
@@ -916,14 +940,38 @@
       if (Object.prototype.hasOwnProperty.call(overrides, 'type')) {
         state.aiRequest.type = overrides.type || '';
       }
+      if (Object.prototype.hasOwnProperty.call(overrides, 'stageKey')) {
+        state.aiRequest.stageKey = overrides.stageKey || '';
+      }
+      if (Object.prototype.hasOwnProperty.call(overrides, 'requestId')) {
+        state.aiRequest.requestId = overrides.requestId || '';
+      }
       if (!aiFormStatus) return;
       const loading = Boolean(state.aiRequest.loading);
-      const message = loading ? translate('status.aiGenerating') : (state.aiRequest.message || '');
+      const stageMessage = state.aiRequest.stageKey ? translate(state.aiRequest.stageKey) : '';
+      const requestSuffix = state.aiRequest.requestId ? ` [${state.aiRequest.requestId}]` : '';
+      const message = loading
+        ? `${stageMessage || translate('status.aiGenerating')}${requestSuffix}`
+        : `${state.aiRequest.message || ''}${requestSuffix}`.trim();
       const classes = ['form-status'];
       if (loading) classes.push('loading');
       if (!loading && message) classes.push(state.aiRequest.type === 'success' ? 'success' : 'error');
       aiFormStatus.textContent = message;
       aiFormStatus.className = classes.join(' ');
+    }
+
+    function logAiTrace(stage, payload = {}, level = 'info') {
+      const entry = {
+        tag: 'ai-rule-client',
+        stage,
+        at: new Date().toISOString(),
+        ...payload
+      };
+      if (level === 'error') {
+        console.error(entry);
+      } else {
+        console.log(entry);
+      }
     }
 
     function setStatus(message, type = 'info') {
@@ -974,7 +1022,9 @@
 
     async function api(url, options = {}) {
       const headers = options.headers ? { ...options.headers } : {};
+      const requestId = options.requestId ? String(options.requestId) : '';
       if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
+      if (requestId) headers['X-Request-Id'] = requestId;
       const opts = {
         ...options,
         headers,
@@ -984,11 +1034,32 @@
         opts.body = JSON.stringify(options.body);
       }
       const res = await fetch(url, opts);
+      const responseRequestId = res.headers.get('x-request-id') || requestId || '';
+      const readJson = async () => {
+        const raw = await res.text();
+        if (!raw) return {};
+        try {
+          return JSON.parse(raw);
+        } catch (parseErr) {
+          const error = new Error(translate('status.aiResponseMalformed'));
+          error.code = 'RESPONSE_MALFORMED';
+          error.requestId = responseRequestId;
+          throw error;
+        }
+      };
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || res.statusText || 'Request failed');
+        const data = await readJson().catch(() => ({}));
+        const error = new Error(data.error || res.statusText || 'Request failed');
+        error.code = data.code || `HTTP_${res.status}`;
+        error.requestId = data.requestId || responseRequestId;
+        error.details = data.details || null;
+        throw error;
       }
-      return res.json().catch(() => ({}));
+      const payload = await readJson();
+      if (payload && typeof payload === 'object' && !payload.requestId && responseRequestId) {
+        payload.requestId = responseRequestId;
+      }
+      return payload;
     }
 
     function extractRules(payload) {
@@ -2797,53 +2868,82 @@
     async function generateAiRule(event) {
       event.preventDefault();
       if (aiGenerateBtn.dataset.loading === 'true') return;
+      const requestId = generateId();
+      logAiTrace('click_event_fired', { requestId });
       const budget = Number(document.getElementById('aiBudget').value);
       if (!(budget > 0)) {
         setStatus(translate('status.aiBudgetInvalid'), 'error');
+        logAiTrace('validation_failed', { requestId, reason: 'invalid_budget', budget }, 'error');
         return;
       }
       const ent = state.entitlements || {};
       if (!ent || !ent.plan || ent.aiEnabled === false) {
         setStatus(translate('status.aiLocked'), 'error');
+        logAiTrace('validation_failed', { requestId, reason: 'ai_locked' }, 'error');
         return;
       }
       const aiLimit = Number(ent?.aiLimit);
       const activeAi = state.rules.filter(r => (r.type || '').toLowerCase() === 'ai' && r.enabled).length;
       if (Number.isFinite(aiLimit) && aiLimit > 0 && activeAi >= aiLimit) {
         setStatus(translate('status.aiLimit', { count: aiLimit }), 'error');
+        logAiTrace('validation_failed', { requestId, reason: 'ai_limit_reached', aiLimit, activeAi }, 'error');
         return;
       }
       aiGenerateBtn.dataset.loading = 'true';
       aiGenerateBtn.disabled = true;
-      updateAiFormStatus({ loading: true, message: '', type: '' });
+      updateAiFormStatus({ loading: true, message: '', type: '', stageKey: 'status.aiStagePreparingMarket', requestId });
+      const requestPayload = { budgetUSDT: budget, locale: state.language, requestId };
+      logAiTrace('request_payload_built', { requestId, requestPayload });
       try {
+        updateAiFormStatus({ loading: true, stageKey: 'status.aiStageSendingRequest', requestId });
         const data = await api('/api/ai-role', {
           method: 'POST',
-          body: { budgetUSDT: budget, locale: state.language }
+          body: requestPayload,
+          requestId
         });
+        const backendRequestId = data?.requestId || requestId;
+        logAiTrace('api_response_received', { requestId: backendRequestId, ok: data?.ok === true, hasRule: Boolean(data?.rule) });
+        updateAiFormStatus({ loading: true, stageKey: 'status.aiStageReceivedResponse', requestId: backendRequestId });
+        updateAiFormStatus({ loading: true, stageKey: 'status.aiStageValidatingResponse', requestId: backendRequestId });
+        if (!data || data.ok !== true || !data.rule || !data.rule.id) {
+          const malformed = new Error(translate('status.aiResponseMalformed'));
+          malformed.code = 'RESPONSE_MALFORMED';
+          malformed.requestId = backendRequestId;
+          throw malformed;
+        }
         const createdRuleId = data?.rule?.id;
+        updateAiFormStatus({ loading: true, stageKey: 'status.aiStageCreatingRule', requestId: backendRequestId });
         updateEntitlementsFromResponse(data);
+        updateAiFormStatus({ loading: true, stageKey: 'status.aiStageRefreshingRules', requestId: backendRequestId });
         await loadRules();
         if (createdRuleId && !state.rules.some(rule => rule.id === createdRuleId)) {
-          throw new Error(translate('status.aiRuleNotPersisted'));
+          const persistedError = new Error(translate('status.aiRuleNotPersisted'));
+          persistedError.code = 'RULE_NOT_VISIBLE_AFTER_REFRESH';
+          persistedError.requestId = backendRequestId;
+          throw persistedError;
         }
         if (data && data.rule && data.rule.aiModel) {
           const modelInput = document.getElementById('aiModel');
           if (modelInput) modelInput.value = data.rule.aiModel;
         }
-        updateAiFormStatus({ loading: false, message: translate('status.aiGenerated'), type: 'success' });
+        updateAiFormStatus({ loading: false, message: translate('status.aiStageSuccess'), type: 'success', stageKey: '', requestId: backendRequestId });
         setStatus(translate('status.aiGenerated'), 'success');
+        logAiTrace('rule_created_success', { requestId: backendRequestId, createdRuleId });
         await loadOrders(true);
       } catch (err) {
-        console.error('ai error', err);
-        const message = (err && err.message ? err.message : '').trim() || translate('status.aiRequestFailed');
-        updateAiFormStatus({ loading: false, message, type: 'error' });
+        logAiTrace('rule_create_failed', {
+          requestId: err?.requestId || requestId,
+          code: err?.code || 'UNKNOWN',
+          message: err?.message || ''
+        }, 'error');
+        const message = (err && err.message ? err.message : '').trim() || translate('status.aiUnknownFailure');
+        updateAiFormStatus({ loading: false, message, type: 'error', stageKey: '', requestId: err?.requestId || requestId });
         setStatus(message, 'error');
       } finally {
         aiGenerateBtn.disabled = false;
         delete aiGenerateBtn.dataset.loading;
         if (state.aiRequest.loading) {
-          updateAiFormStatus({ loading: false });
+          updateAiFormStatus({ loading: false, stageKey: '' });
         }
       }
     }
@@ -2864,7 +2964,7 @@
       state.performanceMetrics = null;
       state.security = defaultSecurityState();
       state.loginMfaRequired = false;
-      state.aiRequest = { loading: false, message: '', type: '' };
+      state.aiRequest = { loading: false, message: '', type: '', stageKey: '', requestId: '' };
       if (state.auth) {
         state.auth.login = { loading: false, message: '', type: '' };
         state.auth.register = { loading: false, message: '', type: '' };

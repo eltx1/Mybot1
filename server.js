@@ -90,6 +90,14 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use((req, res, next) => {
+  const incoming = typeof req.headers["x-request-id"] === "string" ? req.headers["x-request-id"].trim() : "";
+  const requestId = incoming || randomUUID();
+  req.requestId = requestId;
+  res.setHeader("x-request-id", requestId);
+  next();
+});
+
 const dbConfig = {
   host: process.env.DB_HOST || "localhost",
   user: process.env.DB_USER || "root",
@@ -124,6 +132,32 @@ const paymentService = createPaymentService({
 
 const DEFAULT_SENTIMENT_LIMIT = Math.max(3, Number(process.env.MARKET_SENTIMENT_HEADLINES || 6));
 const MARKET_SNAPSHOT_LIMIT = Math.max(6, Number(process.env.MARKET_SNAPSHOT_LIMIT || 12));
+
+function logAiTrace(req, stage, extras = {}, level = "info") {
+  const entry = {
+    tag: "ai-rule-server",
+    stage,
+    requestId: req?.requestId || null,
+    userId: req?.user?.id || null,
+    at: new Date().toISOString(),
+    ...extras
+  };
+  if (level === "error") {
+    console.error(entry);
+  } else {
+    console.log(entry);
+  }
+}
+
+function sendApiError(req, res, status, { code, message, details = null }) {
+  return res.status(status).json({
+    ok: false,
+    code,
+    error: message,
+    details,
+    requestId: req?.requestId || null
+  });
+}
 
 function getNumber(value, fallback = 0) {
   const num = Number(value);
@@ -3015,8 +3049,14 @@ function handleAsync(fn) {
     try {
       await fn(req, res);
     } catch (err) {
-      console.error("API error", err);
-      res.status(500).json({ error: err.message || "Internal Server Error" });
+      console.error("API error", {
+        requestId: req?.requestId || null,
+        path: req?.path || req?.url || "",
+        method: req?.method || "",
+        message: err?.message || err,
+        stack: err?.stack || null
+      });
+      res.status(500).json({ error: err.message || "Internal Server Error", requestId: req?.requestId || null });
     }
   };
 }
@@ -3765,30 +3805,61 @@ function parseAiFeedbackResponse(text) {
 }
 
 app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
+  logAiTrace(req, "request_received", {
+    hasBody: Boolean(req.body),
+    payloadBudget: req.body?.budgetUSDT,
+    payloadLocale: req.body?.locale,
+    payloadRequestId: req.body?.requestId || null
+  });
   const key = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY;
   if (!key) {
-    return res.status(400).json({ error: "OPENAI_API_KEY is required" });
+    logAiTrace(req, "config_error", { reason: "missing_openai_key" }, "error");
+    return sendApiError(req, res, 400, {
+      code: "OPENAI_KEY_MISSING",
+      message: "OPENAI_API_KEY is required"
+    });
   }
 
   const model = (req.body && req.body.model) || DEFAULT_AI_MODEL;
   const budget = Number(req.body && req.body.budgetUSDT !== undefined ? req.body.budgetUSDT : DEFAULT_AI_BUDGET);
   const locale = typeof req.body?.locale === "string" ? req.body.locale.toLowerCase() : "en";
   if (!(budget > 0)) {
-    return res.status(400).json({ error: "budgetUSDT must be a positive number" });
+    logAiTrace(req, "validation_failed", { reason: "invalid_budget", budget }, "error");
+    return sendApiError(req, res, 400, {
+      code: "BUDGET_INVALID",
+      message: "budgetUSDT must be a positive number"
+    });
   }
 
   const { rules: currentRules, entitlements } = await readRules(req.user.id, { withEntitlements: true });
+  logAiTrace(req, "rules_loaded", {
+    totalRules: currentRules.length,
+    activeAiRules: countActiveRules(currentRules, "ai"),
+    aiEnabled: Boolean(entitlements?.aiEnabled),
+    aiLimit: Number.isFinite(entitlements?.aiLimit) ? entitlements.aiLimit : null
+  });
   if (!entitlements.aiEnabled) {
-    return res.status(403).json({ error: "AI rules are disabled for your current plan." });
+    logAiTrace(req, "validation_failed", { reason: "ai_disabled_for_plan" }, "error");
+    return sendApiError(req, res, 403, {
+      code: "AI_DISABLED_FOR_PLAN",
+      message: "AI rules are disabled for your current plan."
+    });
   }
   if (Number.isFinite(entitlements.aiLimit) && entitlements.aiLimit >= 0 && entitlements.aiLimit !== Infinity) {
     const aiActive = countActiveRules(currentRules, "ai");
     if (entitlements.aiLimit <= 0 || aiActive >= entitlements.aiLimit) {
-      return res.status(403).json({ error: `Your plan allows up to ${entitlements.aiLimit} active AI rules.` });
+      logAiTrace(req, "validation_failed", { reason: "ai_limit_reached", aiActive, aiLimit: entitlements.aiLimit }, "error");
+      return sendApiError(req, res, 403, {
+        code: "AI_LIMIT_REACHED",
+        message: `Your plan allows up to ${entitlements.aiLimit} active AI rules.`,
+        details: { aiActive, aiLimit: entitlements.aiLimit }
+      });
     }
   }
 
+  logAiTrace(req, "market_snapshot_start", { limit: MARKET_SNAPSHOT_LIMIT });
   const marketSnapshot = await fetchMarketSnapshot(MARKET_SNAPSHOT_LIMIT);
+  logAiTrace(req, "market_snapshot_ready", { count: marketSnapshot.length });
 
   const summaryLanguage = locale === "ar" ? "Arabic" : "English";
   const promptConfig = getPromptByKey("ai-role");
@@ -3797,6 +3868,7 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
     snapshotText: JSON.stringify(marketSnapshot, null, 2),
     summaryLanguage
   });
+  logAiTrace(req, "prompt_prepared", { model, summaryLanguage });
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -3819,15 +3891,38 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
       ]
     })
   });
+  logAiTrace(req, "llm_response_received", { ok: response.ok, status: response.status });
 
   if (!response.ok) {
     const errText = await response.text();
-    return res.status(502).json({ error: `OpenAI API error: ${errText}` });
+    logAiTrace(req, "llm_call_failed", { status: response.status, error: errText.slice(0, 500) }, "error");
+    return sendApiError(req, res, 502, {
+      code: "OPENAI_REQUEST_FAILED",
+      message: `OpenAI API error: ${errText}`
+    });
   }
 
   const payload = await response.json();
   const text = payload?.choices?.[0]?.message?.content || "";
-  const parsed = parseAiRoleResponse(text);
+  if (!text) {
+    logAiTrace(req, "llm_payload_invalid", { hasChoices: Array.isArray(payload?.choices) }, "error");
+    return sendApiError(req, res, 502, {
+      code: "AI_EMPTY_RESPONSE",
+      message: "AI response was empty."
+    });
+  }
+  let parsed;
+  try {
+    logAiTrace(req, "ai_response_validation_start");
+    parsed = parseAiRoleResponse(text);
+    logAiTrace(req, "ai_response_validation_success", { symbol: parsed.symbol });
+  } catch (err) {
+    logAiTrace(req, "ai_response_validation_failed", { error: err?.message || err }, "error");
+    return sendApiError(req, res, 422, {
+      code: "AI_RESPONSE_INVALID",
+      message: err?.message || "Unable to parse AI response."
+    });
+  }
 
   const snapshotMap = new Map(marketSnapshot.map(item => [item.symbol, item]));
   let referencePrice = snapshotMap.get(parsed.symbol)?.lastPrice;
@@ -3898,14 +3993,35 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
   const { rules: normalized } = normalizeRules(combined);
   const validation = validateRulesAgainstEntitlements(normalized, entitlements);
   if (!validation.ok) {
-    return res.status(403).json({ error: validation.message });
+    logAiTrace(req, "validation_failed", { reason: "rule_validation_failed", message: validation.message }, "error");
+    return sendApiError(req, res, 403, {
+      code: "RULE_VALIDATION_FAILED",
+      message: validation.message
+    });
   }
   const enforced = applyEntitlementsToRules(normalized, entitlements);
-  await writeRules(req.user.id, enforced);
+  logAiTrace(req, "rule_save_start", { candidateRuleId: aiRule.id, totalRulesAfterInsert: enforced.length });
+  try {
+    await writeRules(req.user.id, enforced);
+  } catch (err) {
+    logAiTrace(req, "rule_save_failed", { error: err?.message || err }, "error");
+    return sendApiError(req, res, 500, {
+      code: "RULE_SAVE_FAILED",
+      message: "AI rule was generated but could not be saved.",
+      details: { reason: err?.message || "unknown_write_error" }
+    });
+  }
   const { rules: saved, entitlements: nextEntitlements } = await readRules(req.user.id, { withEntitlements: true });
   const created = saved.find(r => r.id === aiRule.id) || aiRule;
-
-  res.json({ ok: true, rule: created, entitlements: nextEntitlements });
+  if (!saved.some(r => r.id === aiRule.id)) {
+    logAiTrace(req, "rule_post_save_missing", { createdRuleId: aiRule.id }, "error");
+    return sendApiError(req, res, 500, {
+      code: "RULE_SAVE_NOT_VISIBLE",
+      message: "Rule save completed but created rule was not found in refreshed list."
+    });
+  }
+  logAiTrace(req, "request_completed", { createdRuleId: created.id, aiModel: created.aiModel, activeAiRules: countActiveRules(saved, "ai") });
+  res.json({ ok: true, rule: created, entitlements: nextEntitlements, requestId: req.requestId });
 }))); 
 
 app.post("/api/ai/feedback", authRequired(handleAsync(async (req, res) => {
