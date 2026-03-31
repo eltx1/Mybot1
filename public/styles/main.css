@@ -3138,8 +3138,13 @@ footer {
 
 #dashboard table,
 #dashboard .table-wrapper {
+  background: var(--dashboard-surface);
   border: 1px solid var(--dashboard-border-soft);
   border-radius: 16px;
+}
+
+#dashboard .data-table {
+  background: transparent;
 }
 
 #dashboard thead th {
@@ -3155,6 +3160,7 @@ footer {
 }
 
 #dashboard tbody td {
+  background: transparent;
   border-bottom-color: rgba(148, 163, 184, 0.22);
 }
 
