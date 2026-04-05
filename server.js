@@ -855,20 +855,6 @@ async function initDb() {
     `);
 
     await conn.query(`
-      CREATE TABLE IF NOT EXISTS ai_rule_feedback (
-        id BIGINT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT NOT NULL,
-        model VARCHAR(100) DEFAULT NULL,
-        prompt LONGTEXT DEFAULT NULL,
-        response_json LONGTEXT DEFAULT NULL,
-        metrics_json LONGTEXT DEFAULT NULL,
-        sentiment_json LONGTEXT DEFAULT NULL,
-        created_at BIGINT NOT NULL,
-        CONSTRAINT fk_ai_feedback_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        INDEX idx_ai_feedback_user (user_id, created_at)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-    `);
-    await conn.query(`
       CREATE TABLE IF NOT EXISTS prompt_templates (
         id BIGINT AUTO_INCREMENT PRIMARY KEY,
         prompt_key VARCHAR(64) NOT NULL UNIQUE,
@@ -1687,61 +1673,6 @@ async function deleteUserApiKeys(userId) {
   await pool.query("DELETE FROM user_api_keys WHERE user_id = ?", [userId]);
 }
 
-function mapAiFeedbackRow(row) {
-  if (!row) return null;
-  return {
-    id: row.id,
-    userId: row.user_id,
-    model: row.model || null,
-    createdAt: Number(row.created_at) || Date.now(),
-    feedback: safeJSONParse(row.response_json) || null,
-    metrics: safeJSONParse(row.metrics_json) || null,
-    sentiment: safeJSONParse(row.sentiment_json) || null
-  };
-}
-
-async function recordAiFeedback({ userId, model, prompt, response, metrics, sentiment }) {
-  if (!userId) throw new Error("userId is required");
-  const createdAt = Date.now();
-  const payload = [
-    userId,
-    model || null,
-    safeJSONStringify(prompt) || null,
-    safeJSONStringify(response) || null,
-    safeJSONStringify(metrics) || null,
-    safeJSONStringify(sentiment) || null,
-    createdAt
-  ];
-  const [result] = await pool.query(
-    `INSERT INTO ai_rule_feedback (user_id, model, prompt, response_json, metrics_json, sentiment_json, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    payload
-  );
-  const id = Number(result?.insertId) || null;
-  return mapAiFeedbackRow({
-    id,
-    user_id: userId,
-    model: model || null,
-    response_json: safeJSONStringify(response),
-    metrics_json: safeJSONStringify(metrics),
-    sentiment_json: safeJSONStringify(sentiment),
-    created_at: createdAt
-  });
-}
-
-async function listAiFeedback(userId, options = {}) {
-  if (!userId) return [];
-  const limit = Math.max(1, Math.min(20, Number(options.limit) || 5));
-  const [rows] = await pool.query(
-    `SELECT id, user_id, model, response_json, metrics_json, sentiment_json, created_at
-     FROM ai_rule_feedback
-     WHERE user_id = ?
-     ORDER BY created_at DESC
-     LIMIT ?`,
-    [userId, limit]
-  );
-  return rows.map(mapAiFeedbackRow);
-}
 
 async function listPromptTemplates() {
   const [rows] = await pool.query(
@@ -3424,16 +3355,6 @@ app.post("/api/demo/rules/ai", authRequired(handleAsync(async (req, res) => {
     return res.status(500).json({ error: err?.message || "Failed to save AI rule" });
   }
 
-  try {
-    await recordAiFeedback({
-      userId: req.user.id,
-      model,
-      prompt: aiInput,
-      response: { parsed, raw: text, openai: payload }
-    });
-  } catch (err) {
-    console.error("Failed to record AI feedback for demo rule", err);
-  }
 
   res.json({ ok: true, rule });
 })));
@@ -3757,67 +3678,6 @@ function parseAiRoleResponse(text) {
   return { symbol, entryPrice, exitPrice, raw: cleaned, summary: summary || undefined };
 }
 
-function parseAiFeedbackResponse(text) {
-  if (!text) throw new Error("AI response was empty.");
-  const cleaned = text.replace(/```json|```/gi, "").trim();
-  if (!cleaned) throw new Error("AI response was empty.");
-  let parsed;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch (err) {
-    throw new Error("AI response was not valid JSON.");
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("AI response did not contain the expected object.");
-  }
-
-  const updates = Array.isArray(parsed.updates) ? parsed.updates : [];
-  const normalizedUpdates = updates
-    .map(update => {
-      if (!update || typeof update !== "object") return null;
-      const ruleId = typeof update.ruleId === "string" && update.ruleId.trim()
-        ? update.ruleId.trim()
-        : typeof update.id === "string" && update.id.trim()
-          ? update.id.trim()
-          : "";
-      if (!ruleId) return null;
-      const action = typeof update.action === "string" ? update.action.trim().toLowerCase() : "review";
-      const confidence = clampNumber(update.confidence, 0, 1);
-      const notes = typeof update.notes === "string" ? update.notes.trim() : "";
-      const adjustments = update.adjustments && typeof update.adjustments === "object"
-        ? {
-            entryPrice: update.adjustments.entryPrice !== undefined ? roundNumber(update.adjustments.entryPrice, 6) : undefined,
-            exitPrice: update.adjustments.exitPrice !== undefined ? roundNumber(update.adjustments.exitPrice, 6) : undefined,
-            budgetUSDT: update.adjustments.budgetUSDT !== undefined ? roundNumber(update.adjustments.budgetUSDT, 2) : undefined
-          }
-        : {};
-      const priority = update.priority !== undefined ? clampNumber(update.priority, 0, 1) : undefined;
-      return {
-        ruleId,
-        action,
-        confidence,
-        priority,
-        notes,
-        adjustments
-      };
-    })
-    .filter(Boolean);
-
-  const globalInsights = typeof parsed.globalInsights === "string" ? parsed.globalInsights.trim() : "";
-  const sentimentSummary = typeof parsed.sentimentSummary === "string" ? parsed.sentimentSummary.trim() : "";
-  const nextSteps = Array.isArray(parsed.nextSteps)
-    ? parsed.nextSteps.map(step => typeof step === "string" ? step.trim() : null).filter(Boolean)
-    : [];
-
-  return {
-    updates: normalizedUpdates,
-    globalInsights,
-    sentimentSummary,
-    nextSteps,
-    raw: cleaned
-  };
-}
-
 app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
   logAiTrace(req, "request_received", {
     hasBody: Boolean(req.body),
@@ -4038,132 +3898,6 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
   res.json({ ok: true, rule: created, entitlements: nextEntitlements, requestId: req.requestId });
 }))); 
 
-app.post("/api/ai/feedback", authRequired(handleAsync(async (req, res) => {
-  const key = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY;
-  if (!key) {
-    return res.status(400).json({ error: "OPENAI_API_KEY is required" });
-  }
-
-  const model = typeof req.body?.model === "string" && req.body.model.trim() ? req.body.model.trim() : DEFAULT_AI_MODEL;
-  const includeDisabled = req.body?.includeDisabled === true;
-
-  const { rules: allRules, entitlements } = await readRules(req.user.id, { withEntitlements: true, includeHistory: true });
-  const aiRules = allRules.filter(rule => (rule.type || "").toLowerCase() === "ai" && (includeDisabled || rule.enabled));
-  if (!aiRules.length) {
-    return res.status(400).json({ error: "No AI rules available for review." });
-  }
-
-  const tradeData = await fetchUserTradeSummaries({ userId: req.user.id, symbols: aiRules.map(rule => rule.symbol), limit: 200 });
-  if (tradeData.missingKeys) {
-    return res.status(400).json({ error: "Connect your Binance API keys first" });
-  }
-
-  const marketSnapshot = await fetchMarketSnapshot(MARKET_SNAPSHOT_LIMIT);
-  const sentiment = await fetchMarketSentiment({ limit: DEFAULT_SENTIMENT_LIMIT });
-
-  const bySymbol = tradeData.bySymbol || {};
-  const ruleInsights = aiRules.map(rule => {
-    const symbol = String(rule.symbol || "").toUpperCase();
-    const trades = Array.isArray(bySymbol[symbol]) ? bySymbol[symbol] : [];
-    return summarizeRulePerformance(rule, trades);
-  });
-
-  const overallMetrics = tradeData.metrics || calculatePerformanceMetrics([]);
-  const overallSummary = {
-    totalTrades: overallMetrics.totalTrades,
-    totalProfit: roundNumber(overallMetrics.totalProfit, 6),
-    averageProfitPct: roundNumber(overallMetrics.averageProfitPct, 4),
-    winRate: roundNumber(overallMetrics.winRate, 2),
-    averageHoldHours: roundNumber((overallMetrics.averageHoldMs || 0) / 3600000, 2)
-  };
-
-  const aiInput = {
-    generatedAt: new Date().toISOString(),
-    plan: {
-      aiEnabled: Boolean(entitlements?.aiEnabled),
-      aiLimit: Number.isFinite(entitlements?.aiLimit) ? entitlements.aiLimit : null
-    },
-    account: {
-      totalAiRules: aiRules.length,
-      overallPerformance: overallSummary,
-      recentIssues: tradeData.errors || []
-    },
-    rules: ruleInsights,
-    market: {
-      sentiment,
-      snapshot: marketSnapshot
-    }
-  };
-
-  const promptConfig = getPromptByKey("ai-feedback");
-  const instructions = promptConfig.systemPrompt;
-  const userPrompt = renderTemplate(promptConfig.userPromptTemplate, {
-    aiInputJson: JSON.stringify(aiInput, null, 2)
-  });
-
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${key}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model,
-      temperature: Number(promptConfig?.settings?.temperature ?? 0.2),
-      response_format: promptConfig?.settings?.response_format || { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content: instructions
-        },
-        {
-          role: "user",
-          content: userPrompt
-        }
-      ]
-    })
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    return res.status(502).json({ error: `OpenAI API error: ${errText}` });
-  }
-
-  const payload = await response.json();
-  const text = payload?.choices?.[0]?.message?.content || "";
-  const parsed = parseAiFeedbackResponse(text);
-
-  const record = await recordAiFeedback({
-    userId: req.user.id,
-    model,
-    prompt: aiInput,
-    response: parsed,
-    metrics: {
-      overall: overallSummary,
-      rules: ruleInsights
-    },
-    sentiment
-  });
-
-  res.json({
-    ok: true,
-    feedback: parsed,
-    metrics: {
-      overall: overallSummary,
-      rules: ruleInsights
-    },
-    sentiment,
-    marketSnapshot,
-    errors: tradeData.errors || [],
-    record
-  });
-})));
-
-app.get("/api/ai/feedback", authRequired(handleAsync(async (req, res) => {
-  const limit = Math.max(1, Math.min(20, Number(req.query?.limit) || 5));
-  const items = await listAiFeedback(req.user.id, { limit });
-  res.json({ items });
-})));
 
 app.get("/api/admin/prompts", adminRequired(handleAsync(async (req, res) => {
   const prompts = await listPromptTemplates();
