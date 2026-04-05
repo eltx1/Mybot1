@@ -4,7 +4,7 @@ import { PROMPT_DEFAULTS, renderTemplate, defaultPromptMap } from '../lib/prompt
 
 test('default prompts include all OpenAI use-cases', () => {
   const keys = PROMPT_DEFAULTS.map(p => p.key).sort();
-  assert.deepEqual(keys, ['ai-feedback', 'ai-role', 'demo-ai-rule']);
+  assert.deepEqual(keys, ['ai-role', 'demo-ai-rule']);
 });
 
 test('renderTemplate keeps exact static text and injects variables', () => {
