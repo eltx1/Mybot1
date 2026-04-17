@@ -32,6 +32,7 @@ import { summariseCompletedTrades, calculatePerformanceMetrics, filterCompletedT
 import { fetchMarketSentiment } from "./lib/market-sentiment.js";
 import { fetchCoinPriceUSD, fetchCoinMarketSnapshot } from "./lib/coingecko.js";
 import { PROMPT_DEFAULTS, defaultPromptMap, renderTemplate } from "./lib/prompt-registry.js";
+import { callLLM, getLlmRuntimeConfig } from "./lib/llm.js";
 
 const app = express();
 app.use(express.json({
@@ -220,7 +221,8 @@ const JWT_SECRET = process.env.JWT_SECRET || process.env.SECRET_KEY || "change-t
 const CREDENTIALS_SECRET = process.env.CREDENTIALS_SECRET || JWT_SECRET;
 const ENC_ALGO = "aes-256-gcm";
 
-const DEFAULT_AI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
+const llmRuntimeConfig = getLlmRuntimeConfig();
+const DEFAULT_AI_MODEL = llmRuntimeConfig.useOllama ? llmRuntimeConfig.ollamaModel : llmRuntimeConfig.openAiModel;
 const DEFAULT_AI_BUDGET = (() => {
   const raw = Number(process.env.DEFAULT_AI_BUDGET);
   return Number.isFinite(raw) && raw > 0 ? raw : 100;
@@ -1448,15 +1450,48 @@ function validateDemoRulePayload(input = {}) {
   };
 }
 
+function extractLlmText(input) {
+  if (typeof input === "string") return input;
+  if (!input || typeof input !== "object") return "";
+  if (typeof input.text === "string") return input.text;
+  if (typeof input?.message?.content === "string") return input.message.content;
+  if (typeof input?.choices?.[0]?.message?.content === "string") return input.choices[0].message.content;
+  return "";
+}
+
+function extractFirstJsonObject(text) {
+  const source = String(text || "");
+  const start = source.indexOf("{");
+  const end = source.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return "";
+  return source.slice(start, end + 1);
+}
+
+function buildStrictJsonSystemPrompt(basePrompt, jsonExample) {
+  const fewShotExample = String(jsonExample || "").trim();
+  return [
+    String(basePrompt || "").trim(),
+    "CRITICAL OUTPUT RULES:",
+    "1) Return EXACTLY one JSON object and nothing else.",
+    "2) Do not add markdown, code fences, comments, or explanations.",
+    "3) Ensure all numeric fields are valid JSON numbers (not strings).",
+    "4) If data is missing, infer conservatively and still return valid JSON.",
+    "Valid output example:",
+    fewShotExample
+  ].filter(Boolean).join("\n");
+}
+
 function parseDemoAiRuleResponse(text) {
-  if (!text || typeof text !== "string") {
+  const resolvedText = extractLlmText(text);
+  if (!resolvedText || typeof resolvedText !== "string") {
     throw new Error("AI response was empty");
   }
-  let cleaned = text.trim();
+  let cleaned = resolvedText.trim();
   if (!cleaned) {
     throw new Error("AI response was empty");
   }
-  cleaned = cleaned.replace(/^```json\s*/i, "").replace(/```$/i, "");
+  cleaned = cleaned.replace(/```json|```/gi, "").trim();
+  cleaned = extractFirstJsonObject(cleaned) || cleaned;
   let parsed;
   try {
     parsed = JSON.parse(cleaned);
@@ -3257,10 +3292,6 @@ app.post("/api/demo/rules/manual", authRequired(handleAsync(async (req, res) => 
 })));
 
 app.post("/api/demo/rules/ai", authRequired(handleAsync(async (req, res) => {
-  const key = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY;
-  if (!key) {
-    return res.status(400).json({ error: "OPENAI_API_KEY is required" });
-  }
   const model = typeof req.body?.model === "string" && req.body.model.trim() ? req.body.model.trim() : DEFAULT_AI_MODEL;
   const locale = typeof req.body?.locale === "string" ? req.body.locale.toLowerCase() : "en";
   const summaryLanguage = locale === "ar" ? "Arabic" : "English";
@@ -3277,11 +3308,6 @@ app.post("/api/demo/rules/ai", authRequired(handleAsync(async (req, res) => {
     return res.status(503).json({ error: "Failed to load market snapshot from CoinGecko" });
   }
 
-  const aiInput = {
-    budgetUSD: roundNumber(requestedBudget, 2),
-    marketSnapshot,
-    summaryLanguage
-  };
   const promptConfig = getPromptByKey("demo-ai-rule");
   const prompt = renderTemplate(promptConfig.userPromptTemplate, {
     summaryLanguage,
@@ -3289,35 +3315,33 @@ app.post("/api/demo/rules/ai", authRequired(handleAsync(async (req, res) => {
     budgetUSD: roundNumber(requestedBudget, 2)
   });
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${key}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
+  const strictSystemPrompt = buildStrictJsonSystemPrompt(
+    promptConfig.systemPrompt,
+    `{"assetId":"bitcoin","assetSymbol":"BTC","entryPriceUSD":64321.11,"takeProfitPct":1.8,"stopLossPct":1.2,"summary":"Short rationale in ${summaryLanguage}."}`
+  );
+  let llmResult;
+  try {
+    llmResult = await callLLM({
       model,
+      systemPrompt: strictSystemPrompt,
+      userPrompt: prompt,
       temperature: Number(promptConfig?.settings?.temperature ?? 0.2),
-      messages: [
-        {
-          role: "system",
-          content: promptConfig.systemPrompt
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ]
-    })
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    return res.status(502).json({ error: `OpenAI API error: ${errText}` });
+      topP: Number(promptConfig?.settings?.top_p ?? promptConfig?.settings?.topP ?? 1),
+      requestId: req.requestId,
+      logger: console,
+      metadata: { route: "/api/demo/rules/ai", userId: req.user.id }
+    });
+  } catch (err) {
+    console.error("[AI DEMO] LLM call failed", {
+      requestId: req.requestId,
+      code: err?.code || null,
+      error: err?.message || err,
+      details: String(err?.details || "").slice(0, 500)
+    });
+    return res.status(502).json({ error: err?.details ? `${err.message}: ${String(err.details).slice(0, 500)}` : (err?.message || "LLM request failed") });
   }
 
-  const payload = await response.json();
-  const text = payload?.choices?.[0]?.message?.content || "";
+  const text = llmResult?.text || "";
   let parsed;
   try {
     parsed = parseDemoAiRuleResponse(text);
@@ -3345,7 +3369,7 @@ app.post("/api/demo/rules/ai", authRequired(handleAsync(async (req, res) => {
       ...payloadRule,
       type: "ai",
       aiSummary,
-      aiModel: model,
+      aiModel: llmResult?.model || model,
       entryPriceUSD: roundNumber(payloadRule.entryPriceUSD, 6),
       takeProfitPct: payloadRule.takeProfitPct !== null ? roundNumber(payloadRule.takeProfitPct, 4) : null,
       stopLossPct: payloadRule.stopLossPct !== null ? roundNumber(payloadRule.stopLossPct, 4) : null,
@@ -3568,8 +3592,10 @@ app.get("/api/trades/completed", authRequired(handleAsync(async (req, res) => {
 }))); 
 
 function parseAiRoleResponse(text) {
-  if (!text) throw new Error("AI response was empty.");
-  const cleaned = text.replace(/```json|```/gi, "").replace(/\r/g, "").trim();
+  const resolvedText = extractLlmText(text);
+  if (!resolvedText) throw new Error("AI response was empty.");
+  const maybeJsonObject = extractFirstJsonObject(resolvedText);
+  const cleaned = (maybeJsonObject || resolvedText).replace(/```json|```/gi, "").replace(/\r/g, "").trim();
   if (!cleaned) throw new Error("AI response was empty.");
 
   const parseNumeric = value => {
@@ -3685,15 +3711,6 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
     payloadLocale: req.body?.locale,
     payloadRequestId: req.body?.requestId || null
   });
-  const key = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY;
-  if (!key) {
-    logAiTrace(req, "config_error", { reason: "missing_openai_key" }, "error");
-    return sendApiError(req, res, 400, {
-      code: "OPENAI_KEY_MISSING",
-      message: "OPENAI_API_KEY is required"
-    });
-  }
-
   const model = (req.body && req.body.model) || DEFAULT_AI_MODEL;
   const budget = Number(req.body && req.body.budgetUSDT !== undefined ? req.body.budgetUSDT : DEFAULT_AI_BUDGET);
   const locale = typeof req.body?.locale === "string" ? req.body.locale.toLowerCase() : "en";
@@ -3744,42 +3761,34 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
   });
   logAiTrace(req, "prompt_prepared", { model, summaryLanguage });
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${key}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
+  const strictSystemPrompt = buildStrictJsonSystemPrompt(
+    promptConfig.systemPrompt,
+    "{\"symbol\":\"SOLUSDT\",\"entryPrice\":142.55,\"exitPrice\":145.1,\"summary\":\"Short rationale in language requested by user.\"}"
+  );
+  let llmResult;
+  try {
+    llmResult = await callLLM({
       model,
+      systemPrompt: strictSystemPrompt,
+      userPrompt,
       temperature: Number(promptConfig?.settings?.temperature ?? 0.3),
-      messages: [
-        {
-          role: "system",
-          content: promptConfig.systemPrompt
-        },
-        {
-          role: "user",
-          content: userPrompt
-        }
-      ]
-    })
-  });
-  logAiTrace(req, "llm_response_received", { ok: response.ok, status: response.status });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    logAiTrace(req, "llm_call_failed", { status: response.status, error: errText.slice(0, 500) }, "error");
+      topP: Number(promptConfig?.settings?.top_p ?? promptConfig?.settings?.topP ?? 1),
+      requestId: req.requestId,
+      logger: console,
+      metadata: { route: "/api/ai-role", userId: req.user.id }
+    });
+    logAiTrace(req, "llm_response_received", { provider: llmResult.provider, model: llmResult.model });
+  } catch (err) {
+    logAiTrace(req, "llm_call_failed", { code: err?.code, error: err?.message, details: String(err?.details || "").slice(0, 500) }, "error");
     return sendApiError(req, res, 502, {
-      code: "OPENAI_REQUEST_FAILED",
-      message: `OpenAI API error: ${errText}`
+      code: err?.code || "LLM_REQUEST_FAILED",
+      message: err?.details ? `${err.message}: ${String(err.details).slice(0, 500)}` : (err?.message || "LLM request failed")
     });
   }
 
-  const payload = await response.json();
-  const text = payload?.choices?.[0]?.message?.content || "";
+  const text = llmResult?.text || "";
   if (!text) {
-    logAiTrace(req, "llm_payload_invalid", { hasChoices: Array.isArray(payload?.choices) }, "error");
+    logAiTrace(req, "llm_payload_invalid", { provider: llmResult?.provider || null }, "error");
     return sendApiError(req, res, 502, {
       code: "AI_EMPTY_RESPONSE",
       message: "AI response was empty."
@@ -3860,7 +3869,7 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
       }
       return parts.join("\n\n");
     })(),
-    aiModel: model
+    aiModel: llmResult?.model || model
   };
 
   const combined = [...currentRules, aiRule];
@@ -3901,9 +3910,15 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
 
 app.get("/api/admin/prompts", adminRequired(handleAsync(async (req, res) => {
   const prompts = await listPromptTemplates();
+  const aiConfig = getLlmRuntimeConfig();
   res.json({
     prompts,
     adminUrl: `${APP_BASE_URL.replace(/\/$/, "")}/admin-prompts.html`,
+    llm: {
+      provider: aiConfig.provider,
+      defaultModel: aiConfig.useOllama ? aiConfig.ollamaModel : aiConfig.openAiModel,
+      useOllama: aiConfig.useOllama
+    },
     help: "Login as admin in main dashboard first, then open the admin prompts URL with the same browser session token."
   });
 })));
@@ -4010,6 +4025,15 @@ app.get("/api/plans", handleAsync(async (req, res) => {
     providers: {
       nowpayments: PAYMENT_PROVIDERS.nowpayments
     }
+  });
+}));
+
+app.get("/api/ai/config", handleAsync(async (req, res) => {
+  const config = getLlmRuntimeConfig();
+  res.json({
+    provider: config.provider,
+    useOllama: config.useOllama,
+    defaultModel: config.useOllama ? config.ollamaModel : config.openAiModel
   });
 }));
 

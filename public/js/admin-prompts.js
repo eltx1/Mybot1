@@ -1,6 +1,7 @@
 (() => {
   const token = localStorage.getItem('mybot_token') || '';
   const statusEl = document.getElementById('status');
+  const llmInfoEl = document.getElementById('llmInfo');
   const listEl = document.getElementById('promptList');
   const titleEl = document.getElementById('editorTitle');
   const messageEl = document.getElementById('message');
@@ -64,6 +65,11 @@
     const data = await api('/api/admin/prompts');
     state.prompts = data.prompts || [];
     statusEl.textContent = `Admin URL: ${data.adminUrl}`;
+    if (llmInfoEl) {
+      const provider = data?.llm?.provider || 'unknown';
+      const model = data?.llm?.defaultModel || 'n/a';
+      llmInfoEl.textContent = `LLM provider: ${provider} · default model: ${model}`;
+    }
     listEl.innerHTML = state.prompts.map(p => `<div class="prompt-item" data-key="${p.key}">${p.name}<div class="muted">${p.key} · v${p.activeVersion}</div></div>`).join('');
     listEl.querySelectorAll('.prompt-item').forEach(item => item.onclick = () => loadDetails(item.dataset.key));
   }
