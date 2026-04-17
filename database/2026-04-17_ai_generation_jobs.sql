@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS ai_generation_jobs (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  request_id VARCHAR(64) NOT NULL,
+  model VARCHAR(100) NOT NULL,
+  status ENUM('pending','processing','completed','failed','cached') NOT NULL DEFAULT 'pending',
+  input_prompt LONGTEXT DEFAULT NULL,
+  result_rule_id VARCHAR(64) DEFAULT NULL,
+  error_message TEXT DEFAULT NULL,
+  started_at BIGINT DEFAULT NULL,
+  completed_at BIGINT DEFAULT NULL,
+  created_at BIGINT NOT NULL,
+  CONSTRAINT fk_ai_generation_jobs_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ai_generation_jobs_rule FOREIGN KEY (result_rule_id) REFERENCES rules(id) ON DELETE SET NULL,
+  CONSTRAINT uq_ai_generation_jobs_request_id UNIQUE (request_id),
+  INDEX idx_ai_generation_jobs_user_status_created (user_id, status, created_at),
+  INDEX idx_ai_generation_jobs_status_created (status, created_at),
+  INDEX idx_ai_generation_jobs_user_completed (user_id, completed_at),
+  INDEX idx_ai_generation_jobs_result_rule (result_rule_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

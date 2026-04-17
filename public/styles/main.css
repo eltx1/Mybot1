@@ -453,6 +453,30 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, transparent 35%, rgba(255, 255, 255, 0.22), transparent 65%);
+      transform: translateX(-120%);
+      transition: transform 0.5s ease;
+      pointer-events: none;
+    }
+
+    .btn:hover::before {
+      transform: translateX(120%);
+    }
+
+    .btn:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible,
+    select:focus-visible {
+      outline: 2px solid rgba(var(--accent-rgb), 0.85);
+      outline-offset: 2px;
     }
 
     .btn.primary {
@@ -621,21 +645,27 @@
       display: block;
     }
 
-    input, textarea {
+    input, textarea, select {
       width: 100%;
       padding: 12px 14px;
       border-radius: 12px;
       border: 1px solid rgba(15, 23, 42, 0.12);
       background: rgba(241, 245, 249, 0.7);
       font-size: 0.95rem;
-      transition: border 0.2s ease, box-shadow 0.2s ease;
+      transition: border 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, background 0.2s ease;
     }
 
-    input:focus, textarea:focus {
+    input:hover, textarea:hover, select:hover {
+      border-color: rgba(var(--accent-rgb), 0.35);
+      background: rgba(255, 255, 255, 0.96);
+    }
+
+    input:focus, textarea:focus, select:focus {
       outline: none;
       border-color: var(--accent);
       box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.2);
       background: #fff;
+      transform: translateY(-1px);
     }
 
     .muted { color: var(--muted); }

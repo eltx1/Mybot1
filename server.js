@@ -238,6 +238,9 @@ const DEMO_ENGINE_INTERVAL_MS = Math.max(5000, Number(process.env.DEMO_ENGINE_IN
 const DEMO_ENTRY_TOLERANCE_PCT = Math.max(0, Number(process.env.DEMO_ENTRY_TOLERANCE_PCT || 0.2));
 const DEMO_MARKET_SNAPSHOT_LIMIT = Math.max(5, Number(process.env.DEMO_MARKET_SNAPSHOT_LIMIT || 10));
 const DEMO_MIN_BUDGET = Math.max(5, Number(process.env.DEMO_MIN_BUDGET || 10));
+const AI_JOB_CACHE_WINDOW_MS = Math.max(60 * 1000, Number(process.env.AI_JOB_CACHE_WINDOW_MS || (15 * 60 * 1000)));
+const AI_JOB_POLL_INTERVAL_MS = Math.max(1000, Number(process.env.AI_JOB_POLL_INTERVAL_MS || 2500));
+const AI_JOB_BATCH_SIZE = Math.max(1, Number(process.env.AI_JOB_BATCH_SIZE || 2));
 const NOTIFICATION_MAX_RETRIES = Math.max(1, Number(process.env.NOTIFICATION_MAX_RETRIES || 3));
 const RULE_STATE_VERSION = 1;
 const NOTIFICATION_EVENT_TYPES = {
@@ -251,6 +254,8 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const MFA_ISSUER = process.env.MFA_ISSUER || "My1 Bot";
 const credentialCache = new Map();
 let engineManager;
+let aiJobWorkerTimer = null;
+let aiJobWorkerLocked = false;
 let promptCache = defaultPromptMap();
 const ADMIN_EMAILS = new Set((process.env.ADMIN_EMAILS || "")
   .split(",")
@@ -717,6 +722,28 @@ async function initDb() {
         created_at BIGINT NOT NULL,
         INDEX idx_rules_user (user_id),
         CONSTRAINT fk_rules_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS ai_generation_jobs (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        request_id VARCHAR(64) NOT NULL,
+        model VARCHAR(100) NOT NULL,
+        status ENUM('pending','processing','completed','failed','cached') NOT NULL DEFAULT 'pending',
+        input_prompt LONGTEXT DEFAULT NULL,
+        result_rule_id VARCHAR(64) DEFAULT NULL,
+        error_message TEXT DEFAULT NULL,
+        started_at BIGINT DEFAULT NULL,
+        completed_at BIGINT DEFAULT NULL,
+        created_at BIGINT NOT NULL,
+        CONSTRAINT fk_ai_generation_jobs_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_ai_generation_jobs_rule FOREIGN KEY (result_rule_id) REFERENCES rules(id) ON DELETE SET NULL,
+        UNIQUE KEY uniq_ai_generation_jobs_request_id (request_id),
+        INDEX idx_ai_generation_jobs_user_status_created (user_id, status, created_at),
+        INDEX idx_ai_generation_jobs_status_created (status, created_at),
+        INDEX idx_ai_generation_jobs_user_completed (user_id, completed_at)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
@@ -3292,20 +3319,28 @@ app.post("/api/demo/rules/manual", authRequired(handleAsync(async (req, res) => 
 })));
 
 app.post("/api/demo/rules/ai", authRequired(handleAsync(async (req, res) => {
+  logAiTrace(req, "demo_request_received", {
+    payloadBudget: req.body?.budgetUSD,
+    payloadLocale: req.body?.locale,
+    payloadModel: req.body?.model || null
+  });
   const model = typeof req.body?.model === "string" && req.body.model.trim() ? req.body.model.trim() : DEFAULT_AI_MODEL;
   const locale = typeof req.body?.locale === "string" ? req.body.locale.toLowerCase() : "en";
   const summaryLanguage = locale === "ar" ? "Arabic" : "English";
   const requestedBudget = Number(req.body?.budgetUSD ?? req.body?.budget_usd ?? DEFAULT_AI_BUDGET);
   if (!(requestedBudget > 0)) {
-    return res.status(400).json({ error: "budgetUSD must be a positive number" });
+    return sendApiError(req, res, 400, { code: "DEMO_BUDGET_INVALID", message: "budgetUSD must be a positive number." });
   }
   if (requestedBudget < DEMO_MIN_BUDGET) {
-    return res.status(400).json({ error: `budgetUSD must be at least ${DEMO_MIN_BUDGET}` });
+    return sendApiError(req, res, 400, { code: "DEMO_BUDGET_TOO_LOW", message: `budgetUSD must be at least ${DEMO_MIN_BUDGET}.` });
   }
 
   const marketSnapshot = await fetchCoinMarketSnapshot(DEMO_MARKET_SNAPSHOT_LIMIT);
   if (!marketSnapshot.length) {
-    return res.status(503).json({ error: "Failed to load market snapshot from CoinGecko" });
+    return sendApiError(req, res, 503, {
+      code: "DEMO_MARKET_SNAPSHOT_FAILED",
+      message: "Failed to load market snapshot from CoinGecko."
+    });
   }
 
   const promptConfig = getPromptByKey("demo-ai-rule");
@@ -3338,7 +3373,10 @@ app.post("/api/demo/rules/ai", authRequired(handleAsync(async (req, res) => {
       error: err?.message || err,
       details: String(err?.details || "").slice(0, 500)
     });
-    return res.status(502).json({ error: err?.details ? `${err.message}: ${String(err.details).slice(0, 500)}` : (err?.message || "LLM request failed") });
+    return sendApiError(req, res, 502, {
+      code: err?.code || "DEMO_LLM_REQUEST_FAILED",
+      message: err?.details ? `${err.message}: ${String(err.details).slice(0, 500)}` : (err?.message || "LLM request failed")
+    });
   }
 
   const text = llmResult?.text || "";
@@ -3346,7 +3384,10 @@ app.post("/api/demo/rules/ai", authRequired(handleAsync(async (req, res) => {
   try {
     parsed = parseDemoAiRuleResponse(text);
   } catch (err) {
-    return res.status(502).json({ error: err?.message || "Failed to parse AI response" });
+    return sendApiError(req, res, 502, {
+      code: "DEMO_AI_RESPONSE_INVALID",
+      message: err?.message || "Failed to parse AI response JSON."
+    });
   }
 
   const validation = validateDemoRulePayload({
@@ -3354,7 +3395,10 @@ app.post("/api/demo/rules/ai", authRequired(handleAsync(async (req, res) => {
     budgetUSD: requestedBudget
   });
   if (!validation.ok) {
-    return res.status(400).json({ error: validation.errors.join(", ") });
+    return sendApiError(req, res, 400, {
+      code: "DEMO_RULE_VALIDATION_FAILED",
+      message: validation.errors.join(", ")
+    });
   }
 
   const payloadRule = validation.payload;
@@ -3376,7 +3420,10 @@ app.post("/api/demo/rules/ai", authRequired(handleAsync(async (req, res) => {
       budgetUSD: roundNumber(payloadRule.budgetUSD, 2)
     });
   } catch (err) {
-    return res.status(500).json({ error: err?.message || "Failed to save AI rule" });
+    return sendApiError(req, res, 500, {
+      code: "DEMO_RULE_SAVE_FAILED",
+      message: err?.message || "Failed to save AI rule."
+    });
   }
 
 
@@ -3704,53 +3751,156 @@ function parseAiRoleResponse(text) {
   return { symbol, entryPrice, exitPrice, raw: cleaned, summary: summary || undefined };
 }
 
-app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
-  logAiTrace(req, "request_received", {
-    hasBody: Boolean(req.body),
-    payloadBudget: req.body?.budgetUSDT,
-    payloadLocale: req.body?.locale,
-    payloadRequestId: req.body?.requestId || null
-  });
-  const model = (req.body && req.body.model) || DEFAULT_AI_MODEL;
-  const budget = Number(req.body && req.body.budgetUSDT !== undefined ? req.body.budgetUSDT : DEFAULT_AI_BUDGET);
-  const locale = typeof req.body?.locale === "string" ? req.body.locale.toLowerCase() : "en";
-  if (!(budget > 0)) {
-    logAiTrace(req, "validation_failed", { reason: "invalid_budget", budget }, "error");
-    return sendApiError(req, res, 400, {
-      code: "BUDGET_INVALID",
-      message: "budgetUSDT must be a positive number"
-    });
-  }
+async function findRecentCompletedAiJob(userId, { withinMs = AI_JOB_CACHE_WINDOW_MS } = {}) {
+  const minCompletedAt = Date.now() - Math.max(0, Number(withinMs) || 0);
+  const [rows] = await pool.query(
+    `SELECT id, user_id, request_id, model, status, input_prompt, result_rule_id, error_message, started_at, completed_at, created_at
+     FROM ai_generation_jobs
+     WHERE user_id = ?
+       AND status = 'completed'
+       AND result_rule_id IS NOT NULL
+       AND completed_at IS NOT NULL
+       AND completed_at >= ?
+     ORDER BY completed_at DESC
+     LIMIT 1`,
+    [userId, minCompletedAt]
+  );
+  return rows[0] || null;
+}
 
-  const { rules: currentRules, entitlements } = await readRules(req.user.id, { withEntitlements: true });
-  logAiTrace(req, "rules_loaded", {
-    totalRules: currentRules.length,
-    activeAiRules: countActiveRules(currentRules, "ai"),
-    aiEnabled: Boolean(entitlements?.aiEnabled),
-    aiLimit: Number.isFinite(entitlements?.aiLimit) ? entitlements.aiLimit : null
-  });
+async function createAiGenerationJob({
+  userId,
+  requestId,
+  model,
+  status = "pending",
+  inputPrompt = null,
+  resultRuleId = null,
+  errorMessage = null,
+  startedAt = null,
+  completedAt = null
+}) {
+  const createdAt = Date.now();
+  const [result] = await pool.query(
+    `INSERT INTO ai_generation_jobs
+      (user_id, request_id, model, status, input_prompt, result_rule_id, error_message, started_at, completed_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [userId, requestId, model, status, inputPrompt, resultRuleId, errorMessage, startedAt, completedAt, createdAt]
+  );
+  return {
+    id: result.insertId,
+    user_id: userId,
+    request_id: requestId,
+    model,
+    status,
+    input_prompt: inputPrompt,
+    result_rule_id: resultRuleId,
+    error_message: errorMessage,
+    started_at: startedAt,
+    completed_at: completedAt,
+    created_at: createdAt
+  };
+}
+
+async function getAiGenerationJobById(jobId) {
+  const [rows] = await pool.query(
+    `SELECT id, user_id, request_id, model, status, input_prompt, result_rule_id, error_message, started_at, completed_at, created_at
+     FROM ai_generation_jobs
+     WHERE id = ?
+     LIMIT 1`,
+    [jobId]
+  );
+  return rows[0] || null;
+}
+
+async function markAiJobProcessing(jobId) {
+  const startedAt = Date.now();
+  const [result] = await pool.query(
+    `UPDATE ai_generation_jobs
+     SET status = 'processing', started_at = ?, error_message = NULL
+     WHERE id = ? AND status = 'pending'`,
+    [startedAt, jobId]
+  );
+  return result.affectedRows > 0;
+}
+
+async function updateAiGenerationJob(jobId, patch = {}) {
+  const sets = [];
+  const params = [];
+  for (const [key, value] of Object.entries(patch)) {
+    sets.push(`${key} = ?`);
+    params.push(value);
+  }
+  if (!sets.length) return;
+  params.push(jobId);
+  await pool.query(`UPDATE ai_generation_jobs SET ${sets.join(", ")} WHERE id = ?`, params);
+}
+
+async function claimPendingAiJobs(limit = AI_JOB_BATCH_SIZE) {
+  const [rows] = await pool.query(
+    `SELECT id
+     FROM ai_generation_jobs
+     WHERE status = 'pending'
+     ORDER BY created_at ASC
+     LIMIT ?`,
+    [Math.max(1, Number(limit) || 1)]
+  );
+  const claimed = [];
+  for (const row of rows) {
+    const ok = await markAiJobProcessing(row.id);
+    if (ok) {
+      const job = await getAiGenerationJobById(row.id);
+      if (job) claimed.push(job);
+    }
+  }
+  return claimed;
+}
+
+function normalizeAiRoleInput(rawInput) {
+  let payload = {};
+  if (typeof rawInput === "string" && rawInput.trim()) {
+    try {
+      payload = JSON.parse(rawInput);
+    } catch (err) {
+      const wrapped = new Error("Failed to parse AI job payload JSON.");
+      wrapped.code = "AI_JOB_PAYLOAD_PARSE_FAILED";
+      throw wrapped;
+    }
+  } else if (rawInput && typeof rawInput === "object") {
+    payload = rawInput;
+  }
+  const budget = Number(payload.budgetUSDT);
+  const locale = typeof payload.locale === "string" ? payload.locale.toLowerCase() : "en";
+  const model = typeof payload.model === "string" && payload.model.trim() ? payload.model.trim() : DEFAULT_AI_MODEL;
+  if (!(budget > 0)) {
+    const wrapped = new Error("budgetUSDT must be a positive number");
+    wrapped.code = "BUDGET_INVALID";
+    throw wrapped;
+  }
+  return { budget, locale, model };
+}
+
+async function generateAndPersistAiRule({ userId, requestId, model, budget, locale }) {
+  const { rules: currentRules, entitlements } = await readRules(userId, { withEntitlements: true });
   if (!entitlements.aiEnabled) {
-    logAiTrace(req, "validation_failed", { reason: "ai_disabled_for_plan" }, "error");
-    return sendApiError(req, res, 403, {
-      code: "AI_DISABLED_FOR_PLAN",
-      message: "AI rules are disabled for your current plan."
-    });
+    const wrapped = new Error("AI rules are disabled for your current plan.");
+    wrapped.code = "AI_DISABLED_FOR_PLAN";
+    throw wrapped;
   }
   if (Number.isFinite(entitlements.aiLimit) && entitlements.aiLimit >= 0 && entitlements.aiLimit !== Infinity) {
     const aiActive = countActiveRules(currentRules, "ai");
     if (entitlements.aiLimit <= 0 || aiActive >= entitlements.aiLimit) {
-      logAiTrace(req, "validation_failed", { reason: "ai_limit_reached", aiActive, aiLimit: entitlements.aiLimit }, "error");
-      return sendApiError(req, res, 403, {
-        code: "AI_LIMIT_REACHED",
-        message: `Your plan allows up to ${entitlements.aiLimit} active AI rules.`,
-        details: { aiActive, aiLimit: entitlements.aiLimit }
-      });
+      const wrapped = new Error(`Your plan allows up to ${entitlements.aiLimit} active AI rules.`);
+      wrapped.code = "AI_LIMIT_REACHED";
+      throw wrapped;
     }
   }
 
-  logAiTrace(req, "market_snapshot_start", { limit: MARKET_SNAPSHOT_LIMIT });
   const marketSnapshot = await fetchMarketSnapshot(MARKET_SNAPSHOT_LIMIT);
-  logAiTrace(req, "market_snapshot_ready", { count: marketSnapshot.length });
+  if (!Array.isArray(marketSnapshot) || !marketSnapshot.length) {
+    const wrapped = new Error("Failed to fetch market snapshot for AI rule generation.");
+    wrapped.code = "MARKET_SNAPSHOT_FAILED";
+    throw wrapped;
+  }
 
   const summaryLanguage = locale === "ar" ? "Arabic" : "English";
   const promptConfig = getPromptByKey("ai-role");
@@ -3759,12 +3909,11 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
     snapshotText: JSON.stringify(marketSnapshot, null, 2),
     summaryLanguage
   });
-  logAiTrace(req, "prompt_prepared", { model, summaryLanguage });
-
   const strictSystemPrompt = buildStrictJsonSystemPrompt(
     promptConfig.systemPrompt,
     "{\"symbol\":\"SOLUSDT\",\"entryPrice\":142.55,\"exitPrice\":145.1,\"summary\":\"Short rationale in language requested by user.\"}"
   );
+
   let llmResult;
   try {
     llmResult = await callLLM({
@@ -3773,139 +3922,229 @@ app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
       userPrompt,
       temperature: Number(promptConfig?.settings?.temperature ?? 0.3),
       topP: Number(promptConfig?.settings?.top_p ?? promptConfig?.settings?.topP ?? 1),
-      requestId: req.requestId,
+      requestId,
       logger: console,
-      metadata: { route: "/api/ai-role", userId: req.user.id }
+      metadata: { route: "/api/ai-role", userId, mode: "background-job" }
     });
-    logAiTrace(req, "llm_response_received", { provider: llmResult.provider, model: llmResult.model });
   } catch (err) {
-    logAiTrace(req, "llm_call_failed", { code: err?.code, error: err?.message, details: String(err?.details || "").slice(0, 500) }, "error");
-    return sendApiError(req, res, 502, {
-      code: err?.code || "LLM_REQUEST_FAILED",
-      message: err?.details ? `${err.message}: ${String(err.details).slice(0, 500)}` : (err?.message || "LLM request failed")
-    });
+    const wrapped = new Error(err?.message || "Failed to connect to AI provider.");
+    wrapped.code = err?.code || "LLM_REQUEST_FAILED";
+    wrapped.details = err?.details || null;
+    throw wrapped;
   }
 
   const text = llmResult?.text || "";
   if (!text) {
-    logAiTrace(req, "llm_payload_invalid", { provider: llmResult?.provider || null }, "error");
-    return sendApiError(req, res, 502, {
-      code: "AI_EMPTY_RESPONSE",
-      message: "AI response was empty."
-    });
+    const wrapped = new Error("AI returned an empty response.");
+    wrapped.code = "AI_EMPTY_RESPONSE";
+    throw wrapped;
   }
+
   let parsed;
   try {
-    logAiTrace(req, "ai_response_validation_start");
     parsed = parseAiRoleResponse(text);
-    logAiTrace(req, "ai_response_validation_success", { symbol: parsed.symbol });
   } catch (err) {
-    logAiTrace(req, "ai_response_validation_failed", { error: err?.message || err }, "error");
-    return sendApiError(req, res, 422, {
-      code: "AI_RESPONSE_INVALID",
-      message: err?.message || "Unable to parse AI response."
-    });
-  }
-
-  const snapshotMap = new Map(marketSnapshot.map(item => [item.symbol, item]));
-  let referencePrice = snapshotMap.get(parsed.symbol)?.lastPrice;
-  if (!Number.isFinite(referencePrice)) {
-    try {
-      const tickerRes = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${parsed.symbol}`);
-      if (tickerRes.ok) {
-        const tickerPayload = await tickerRes.json();
-        const maybePrice = Number(tickerPayload?.price);
-        if (Number.isFinite(maybePrice) && maybePrice > 0) {
-          referencePrice = maybePrice;
-        }
-      }
-    } catch (err) {
-      console.error("Failed to fetch live ticker for", parsed.symbol, err);
-    }
-  }
-
-  if (Number.isFinite(referencePrice) && referencePrice > 0) {
-    const normalise = (value, fallback) => {
-      if (!Number.isFinite(value) || value <= 0) return fallback;
-      return Number(value);
-    };
-    let entry = normalise(parsed.entryPrice, referencePrice * 0.995);
-    let exit = normalise(parsed.exitPrice, entry * 1.015);
-    const entryDiff = Math.abs(entry - referencePrice) / referencePrice;
-    if (!Number.isFinite(entry) || entryDiff > 0.05) {
-      entry = Number((referencePrice * 0.995).toFixed(6));
-    }
-    if (!Number.isFinite(exit) || exit <= entry) {
-      exit = Number((entry * 1.015).toFixed(6));
-    } else {
-      let delta = (exit - entry) / entry;
-      if (delta < 0.003) {
-        exit = Number((entry * 1.008).toFixed(6));
-      } else if (delta > 0.08) {
-        exit = Number((entry * 1.05).toFixed(6));
-      } else {
-        exit = Number(exit.toFixed(6));
-      }
-    }
-    parsed.entryPrice = Number(entry.toFixed(6));
-    parsed.exitPrice = Number(exit.toFixed(6));
+    const wrapped = new Error(err?.message || "Failed to parse AI response JSON.");
+    wrapped.code = "AI_RESPONSE_INVALID";
+    throw wrapped;
   }
 
   const aiRule = {
     id: randomUUID(),
     type: "ai",
     symbol: parsed.symbol,
-    entryPrice: parsed.entryPrice,
-    exitPrice: parsed.exitPrice,
+    entryPrice: Number(parsed.entryPrice),
+    exitPrice: Number(parsed.exitPrice),
     budgetUSDT: budget,
     enabled: true,
     createdAt: Date.now(),
-    aiSummary: (() => {
-      const parts = [];
-      if (parsed.summary) parts.push(parsed.summary);
-      else parts.push(parsed.raw);
-      if (Number.isFinite(referencePrice) && referencePrice > 0) {
-        parts.push(`Live price check (${parsed.symbol}): ${referencePrice} USDT at ${new Date().toISOString()}. Entry ${parsed.entryPrice}, take-profit ${parsed.exitPrice}.`);
-      }
-      return parts.join("\n\n");
-    })(),
+    aiSummary: parsed.summary || parsed.raw,
     aiModel: llmResult?.model || model
   };
-
   const combined = [...currentRules, aiRule];
   const { rules: normalized } = normalizeRules(combined);
   const validation = validateRulesAgainstEntitlements(normalized, entitlements);
   if (!validation.ok) {
-    logAiTrace(req, "validation_failed", { reason: "rule_validation_failed", message: validation.message }, "error");
-    return sendApiError(req, res, 403, {
-      code: "RULE_VALIDATION_FAILED",
-      message: validation.message
-    });
+    const wrapped = new Error(validation.message || "Rule failed entitlement validation.");
+    wrapped.code = "RULE_VALIDATION_FAILED";
+    throw wrapped;
   }
   const enforced = applyEntitlementsToRules(normalized, entitlements);
-  logAiTrace(req, "rule_save_start", { candidateRuleId: aiRule.id, totalRulesAfterInsert: enforced.length });
+  await writeRules(userId, enforced);
+  const { rules: saved } = await readRules(userId, { withEntitlements: false });
+  const created = saved.find(rule => rule.id === aiRule.id);
+  if (!created) {
+    const wrapped = new Error("Rule was saved but not visible after refresh.");
+    wrapped.code = "RULE_SAVE_NOT_VISIBLE";
+    throw wrapped;
+  }
+  return created;
+}
+
+async function processAiGenerationJob(job) {
+  const requestId = job?.request_id || randomUUID();
   try {
-    await writeRules(req.user.id, enforced);
+    const payload = normalizeAiRoleInput(job?.input_prompt || "{}");
+    console.log("[AI JOB] Processing started", { jobId: job.id, userId: job.user_id, requestId, model: payload.model });
+    const rule = await generateAndPersistAiRule({
+      userId: job.user_id,
+      requestId,
+      model: payload.model,
+      budget: payload.budget,
+      locale: payload.locale
+    });
+    await updateAiGenerationJob(job.id, {
+      status: "completed",
+      result_rule_id: rule.id,
+      error_message: null,
+      completed_at: Date.now()
+    });
+    console.log("[AI JOB] Completed", { jobId: job.id, userId: job.user_id, requestId, ruleId: rule.id });
   } catch (err) {
-    logAiTrace(req, "rule_save_failed", { error: err?.message || err }, "error");
-    return sendApiError(req, res, 500, {
-      code: "RULE_SAVE_FAILED",
-      message: "AI rule was generated but could not be saved.",
-      details: { reason: err?.message || "unknown_write_error" }
+    const readableError = err?.details
+      ? `${err.message}: ${String(err.details).slice(0, 400)}`
+      : (err?.message || "Unknown AI generation error");
+    await updateAiGenerationJob(job.id, {
+      status: "failed",
+      error_message: readableError,
+      completed_at: Date.now()
+    });
+    console.error("[AI JOB] Failed", {
+      jobId: job.id,
+      userId: job.user_id,
+      requestId,
+      code: err?.code || "UNKNOWN",
+      message: readableError
     });
   }
-  const { rules: saved, entitlements: nextEntitlements } = await readRules(req.user.id, { withEntitlements: true });
-  const created = saved.find(r => r.id === aiRule.id) || aiRule;
-  if (!saved.some(r => r.id === aiRule.id)) {
-    logAiTrace(req, "rule_post_save_missing", { createdRuleId: aiRule.id }, "error");
-    return sendApiError(req, res, 500, {
-      code: "RULE_SAVE_NOT_VISIBLE",
-      message: "Rule save completed but created rule was not found in refreshed list."
+}
+
+async function runAiJobWorkerTick() {
+  if (aiJobWorkerLocked) return;
+  aiJobWorkerLocked = true;
+  try {
+    const jobs = await claimPendingAiJobs(AI_JOB_BATCH_SIZE);
+    if (!jobs.length) return;
+    for (const job of jobs) {
+      await processAiGenerationJob(job);
+    }
+  } finally {
+    aiJobWorkerLocked = false;
+  }
+}
+
+app.post("/api/ai-role", authRequired(handleAsync(async (req, res) => {
+  logAiTrace(req, "request_received", {
+    payloadBudget: req.body?.budgetUSDT,
+    payloadLocale: req.body?.locale
+  });
+  const model = typeof req.body?.model === "string" && req.body.model.trim() ? req.body.model.trim() : DEFAULT_AI_MODEL;
+  const budget = Number(req.body?.budgetUSDT ?? DEFAULT_AI_BUDGET);
+  const locale = typeof req.body?.locale === "string" ? req.body.locale.toLowerCase() : "en";
+  if (!(budget > 0)) {
+    return sendApiError(req, res, 400, { code: "BUDGET_INVALID", message: "budgetUSDT must be a positive number." });
+  }
+  const { rules: currentRules, entitlements } = await readRules(req.user.id, { withEntitlements: true });
+  if (!entitlements.aiEnabled) {
+    return sendApiError(req, res, 403, { code: "AI_DISABLED_FOR_PLAN", message: "AI rules are disabled for your current plan." });
+  }
+  const aiActive = countActiveRules(currentRules, "ai");
+  if (Number.isFinite(entitlements.aiLimit) && entitlements.aiLimit >= 0 && entitlements.aiLimit !== Infinity && aiActive >= entitlements.aiLimit) {
+    return sendApiError(req, res, 403, {
+      code: "AI_LIMIT_REACHED",
+      message: `Your plan allows up to ${entitlements.aiLimit} active AI rules.`,
+      details: { aiActive, aiLimit: entitlements.aiLimit }
     });
   }
-  logAiTrace(req, "request_completed", { createdRuleId: created.id, aiModel: created.aiModel, activeAiRules: countActiveRules(saved, "ai") });
-  res.json({ ok: true, rule: created, entitlements: nextEntitlements, requestId: req.requestId });
-}))); 
+
+  const recent = await findRecentCompletedAiJob(req.user.id);
+  if (recent?.result_rule_id) {
+    const { rules: saved, entitlements: nextEntitlements } = await readRules(req.user.id, { withEntitlements: true });
+    const cachedRule = saved.find(rule => rule.id === recent.result_rule_id);
+    if (cachedRule) {
+      const cachedJob = await createAiGenerationJob({
+        userId: req.user.id,
+        requestId: randomUUID(),
+        model,
+        status: "cached",
+        inputPrompt: JSON.stringify({ budgetUSDT: budget, locale, model }),
+        resultRuleId: cachedRule.id,
+        startedAt: Date.now(),
+        completedAt: Date.now()
+      });
+      return res.json({
+        ok: true,
+        status: "cached",
+        message: "Using your latest AI rule generated in the last 15 minutes.",
+        jobId: cachedJob.id,
+        rule: cachedRule,
+        entitlements: nextEntitlements,
+        requestId: req.requestId
+      });
+    }
+  }
+
+  const job = await createAiGenerationJob({
+    userId: req.user.id,
+    requestId: req.requestId || randomUUID(),
+    model,
+    status: "pending",
+    inputPrompt: JSON.stringify({ budgetUSDT: budget, locale, model })
+  });
+  logAiTrace(req, "job_queued", { jobId: job.id, model, budget, locale });
+  runAiJobWorkerTick().catch(err => {
+    console.error("[AI JOB] Immediate worker tick failed", { message: err?.message || err });
+  });
+  res.status(202).json({
+    ok: true,
+    status: "pending",
+    message: "Lion AI is thinking and researching now...",
+    jobId: job.id,
+    pollIntervalMs: AI_JOB_POLL_INTERVAL_MS,
+    requestId: req.requestId
+  });
+})));
+
+app.get("/api/ai-role/jobs/:jobId", authRequired(handleAsync(async (req, res) => {
+  const jobId = Number(req.params.jobId);
+  if (!Number.isFinite(jobId) || jobId <= 0) {
+    return sendApiError(req, res, 400, { code: "JOB_ID_INVALID", message: "jobId must be a positive integer." });
+  }
+  const job = await getAiGenerationJobById(jobId);
+  if (!job || Number(job.user_id) !== Number(req.user.id)) {
+    return sendApiError(req, res, 404, { code: "JOB_NOT_FOUND", message: "AI generation job was not found." });
+  }
+  const payload = {
+    ok: true,
+    job: {
+      id: job.id,
+      status: job.status,
+      model: job.model,
+      requestId: job.request_id,
+      errorMessage: job.error_message || null,
+      startedAt: job.started_at,
+      completedAt: job.completed_at,
+      createdAt: job.created_at
+    },
+    requestId: req.requestId
+  };
+  if (job.result_rule_id) {
+    const { rules, entitlements } = await readRules(req.user.id, { withEntitlements: true });
+    const rule = rules.find(item => item.id === job.result_rule_id) || null;
+    payload.rule = rule;
+    payload.entitlements = entitlements;
+  }
+  if (job.status === "failed") {
+    return res.json({
+      ok: false,
+      code: "AI_JOB_FAILED",
+      error: job.error_message || "AI job failed with unknown error.",
+      details: payload,
+      requestId: req.requestId
+    });
+  }
+  res.json(payload);
+})));
 
 
 app.get("/api/admin/prompts", adminRequired(handleAsync(async (req, res) => {
@@ -4198,6 +4437,14 @@ async function getEngineSnapshots() {
 async function bootstrap() {
   await initDb();
   await loadPromptConfigs();
+  aiJobWorkerTimer = setInterval(() => {
+    runAiJobWorkerTick().catch(err => {
+      console.error("[AI JOB] Worker tick failed", { message: err?.message || err });
+    });
+  }, AI_JOB_POLL_INTERVAL_MS);
+  runAiJobWorkerTick().catch(err => {
+    console.error("[AI JOB] Initial worker tick failed", { message: err?.message || err });
+  });
   app.listen(PORT, () => {
     console.log("my1 platform running on port", PORT);
   });
