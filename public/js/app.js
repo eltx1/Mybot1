@@ -3083,6 +3083,14 @@
       renderTables();
       renderOrders([]);
       renderCompletedTrades([]);
+      try {
+        const aiConfig = await api('/api/ai/config');
+        if (aiModelInput && aiConfig && aiConfig.defaultModel) {
+          aiModelInput.value = aiConfig.defaultModel;
+        }
+      } catch (err) {
+        console.warn('Failed to load AI config', err);
+      }
       await loadPlans();
       if (state.token) {
         try {

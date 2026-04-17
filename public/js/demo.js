@@ -63,7 +63,7 @@
           model: 'Model',
           generate: 'Generate with AI',
           budgetPlaceholder: '150',
-          modelPlaceholder: 'gpt-4o-mini',
+          modelPlaceholder: 'qwen3.5:2b',
           localeEnglish: 'English',
           localeArabic: 'Arabic'
         },
@@ -175,7 +175,7 @@
           model: 'النموذج',
           generate: 'توليد باستخدام الذكاء الاصطناعي',
           budgetPlaceholder: '150',
-          modelPlaceholder: 'gpt-4o-mini',
+          modelPlaceholder: 'qwen3.5:2b',
           localeEnglish: 'الإنجليزية',
           localeArabic: 'العربية'
         },
@@ -902,6 +902,14 @@
   async function bootstrap() {
     applyTranslations();
     setupEventListeners();
+    try {
+      const aiConfig = await api('/api/ai/config');
+      if (aiModelInput && aiConfig && aiConfig.defaultModel && !aiModelInput.value.trim()) {
+        aiModelInput.value = aiConfig.defaultModel;
+      }
+    } catch (err) {
+      console.warn('failed to load ai config', err);
+    }
     if (requireToken()) {
       return;
     }
