@@ -266,6 +266,11 @@
           aiStageCreatingRule: "Creating AI rule...",
           aiStageRefreshingRules: "Refreshing AI rules list...",
           aiStageSuccess: "AI rule created and synced successfully.",
+          aiQueued: "Lion AI is thinking and researching in real-time...",
+          aiPolling: "AI is still analyzing market data. Please wait...",
+          aiJobCompleted: "AI generation completed and your new rule is ready.",
+          aiJobCached: "Used a cached AI rule generated in the last 15 minutes.",
+          aiJobFailed: "AI generation failed.",
           aiRequestFailed: "AI generation failed. Please try again.",
           aiRuleNotPersisted: "The AI response was received, but the rule was not saved. Please retry.",
           aiResponseMalformed: "The AI service returned an invalid response payload.",
@@ -602,6 +607,11 @@
           aiStageCreatingRule: "جارٍ إنشاء قاعدة الذكاء الاصطناعي...",
           aiStageRefreshingRules: "جارٍ تحديث قائمة قواعد الذكاء الاصطناعي...",
           aiStageSuccess: "تم إنشاء القاعدة ومزامنتها بنجاح.",
+          aiQueued: "Lion AI يفكر ويبحث في الوقت الفعلي الآن...",
+          aiPolling: "الذكاء الاصطناعي ما زال يحلل بيانات السوق، انتظر قليلاً...",
+          aiJobCompleted: "اكتمل التوليد بالذكاء الاصطناعي والقاعدة الجديدة جاهزة.",
+          aiJobCached: "تم استخدام قاعدة مخزنة خلال آخر 15 دقيقة.",
+          aiJobFailed: "فشلت عملية التوليد بالذكاء الاصطناعي.",
           aiRequestFailed: "فشل توليد القاعدة بالذكاء الاصطناعي. حاول مرة أخرى.",
           aiRuleNotPersisted: "تم استلام رد الذكاء الاصطناعي لكن لم يتم حفظ القاعدة. أعد المحاولة.",
           aiResponseMalformed: "خدمة الذكاء الاصطناعي أعادت استجابة غير صالحة.",
@@ -697,6 +707,8 @@
       mfaMode: 'enable'
     });
 
+    const AI_JOB_STORAGE_KEY = 'mybot_ai_job';
+
     const state = {
       language: localStorage.getItem('mybot_language') || 'en',
       token: sanitizeStoredToken(localStorage.getItem('mybot_token')),
@@ -708,9 +720,10 @@
         login: { loading: false, message: '', type: '' },
         register: { loading: false, message: '', type: '' }
       },
-      aiRequest: { loading: false, message: '', type: '', stageKey: '', requestId: '' },
+      aiRequest: { loading: false, message: '', type: '', stageKey: '', requestId: '', jobId: null },
       entitlements: null,
       ordersTimer: null,
+      aiJobTimer: null,
       statusTimer: null,
       hasKeys: false,
       isRulesLoading: false,
@@ -946,6 +959,9 @@
       if (Object.prototype.hasOwnProperty.call(overrides, 'requestId')) {
         state.aiRequest.requestId = overrides.requestId || '';
       }
+      if (Object.prototype.hasOwnProperty.call(overrides, 'jobId')) {
+        state.aiRequest.jobId = overrides.jobId || null;
+      }
       if (!aiFormStatus) return;
       const loading = Boolean(state.aiRequest.loading);
       const stageMessage = state.aiRequest.stageKey ? translate(state.aiRequest.stageKey) : '';
@@ -958,6 +974,97 @@
       if (!loading && message) classes.push(state.aiRequest.type === 'success' ? 'success' : 'error');
       aiFormStatus.textContent = message;
       aiFormStatus.className = classes.join(' ');
+    }
+
+    function persistPendingAiJob() {
+      const jobId = state.aiRequest?.jobId;
+      if (!jobId) {
+        localStorage.removeItem(AI_JOB_STORAGE_KEY);
+        return;
+      }
+      localStorage.setItem(AI_JOB_STORAGE_KEY, JSON.stringify({
+        jobId,
+        requestId: state.aiRequest.requestId || '',
+        at: Date.now()
+      }));
+    }
+
+    function clearPendingAiJob() {
+      if (state.aiJobTimer) {
+        clearInterval(state.aiJobTimer);
+        state.aiJobTimer = null;
+      }
+      updateAiFormStatus({ jobId: null });
+      localStorage.removeItem(AI_JOB_STORAGE_KEY);
+    }
+
+    async function pollAiJobStatus(jobId, requestId = '') {
+      const data = await api(`/api/ai-role/jobs/${encodeURIComponent(jobId)}`, { requestId });
+      if (data?.ok === false && data?.code === 'AI_JOB_FAILED') {
+        const failedMessage = data?.error || translate('status.aiJobFailed');
+        throw new Error(failedMessage);
+      }
+      return data;
+    }
+
+    function startAiJobPolling(jobId, requestId, intervalMs = 2500) {
+      clearPendingAiJob();
+      updateAiFormStatus({ loading: true, stageKey: 'status.aiQueued', requestId, jobId });
+      persistPendingAiJob();
+      const tick = async () => {
+        try {
+          const jobPayload = await pollAiJobStatus(jobId, requestId);
+          const status = jobPayload?.job?.status;
+          if (status === 'completed' || status === 'cached') {
+            await loadRules();
+            updateEntitlementsFromResponse(jobPayload);
+            updateAiFormStatus({
+              loading: false,
+              message: status === 'cached' ? translate('status.aiJobCached') : translate('status.aiJobCompleted'),
+              type: 'success',
+              stageKey: '',
+              requestId
+            });
+            setStatus(status === 'cached' ? translate('status.aiJobCached') : translate('status.aiGenerated'), 'success');
+            clearPendingAiJob();
+            await loadOrders(true);
+            return;
+          }
+          if (status === 'failed') {
+            throw new Error(jobPayload?.job?.errorMessage || translate('status.aiJobFailed'));
+          }
+          updateAiFormStatus({ loading: true, stageKey: 'status.aiPolling', requestId, jobId });
+        } catch (err) {
+          updateAiFormStatus({
+            loading: false,
+            message: err?.message || translate('status.aiUnknownFailure'),
+            type: 'error',
+            stageKey: '',
+            requestId
+          });
+          setStatus(err?.message || translate('status.aiUnknownFailure'), 'error');
+          clearPendingAiJob();
+        }
+      };
+      tick();
+      state.aiJobTimer = setInterval(tick, Math.max(1000, Number(intervalMs) || 2500));
+    }
+
+    function resumePendingAiJobIfAny() {
+      const raw = localStorage.getItem(AI_JOB_STORAGE_KEY);
+      if (!raw) return;
+      try {
+        const saved = JSON.parse(raw);
+        const jobId = Number(saved?.jobId);
+        if (!Number.isFinite(jobId) || jobId <= 0) {
+          localStorage.removeItem(AI_JOB_STORAGE_KEY);
+          return;
+        }
+        const requestId = typeof saved?.requestId === 'string' ? saved.requestId : generateId();
+        startAiJobPolling(jobId, requestId, 2500);
+      } catch (err) {
+        localStorage.removeItem(AI_JOB_STORAGE_KEY);
+      }
     }
 
     function logAiTrace(stage, payload = {}, level = 'info') {
@@ -2891,7 +2998,7 @@
       }
       aiGenerateBtn.dataset.loading = 'true';
       aiGenerateBtn.disabled = true;
-      updateAiFormStatus({ loading: true, message: '', type: '', stageKey: 'status.aiStagePreparingMarket', requestId });
+      updateAiFormStatus({ loading: true, message: '', type: '', stageKey: 'status.aiStagePreparingMarket', requestId, jobId: null });
       const requestPayload = { budgetUSDT: budget, locale: state.language, requestId };
       logAiTrace('request_payload_built', { requestId, requestPayload });
       try {
@@ -2902,34 +3009,24 @@
           requestId
         });
         const backendRequestId = data?.requestId || requestId;
-        logAiTrace('api_response_received', { requestId: backendRequestId, ok: data?.ok === true, hasRule: Boolean(data?.rule) });
-        updateAiFormStatus({ loading: true, stageKey: 'status.aiStageReceivedResponse', requestId: backendRequestId });
-        updateAiFormStatus({ loading: true, stageKey: 'status.aiStageValidatingResponse', requestId: backendRequestId });
-        if (!data || data.ok !== true || !data.rule || !data.rule.id) {
-          const malformed = new Error(translate('status.aiResponseMalformed'));
-          malformed.code = 'RESPONSE_MALFORMED';
-          malformed.requestId = backendRequestId;
-          throw malformed;
+        logAiTrace('api_response_received', { requestId: backendRequestId, ok: data?.ok === true, status: data?.status || null, jobId: data?.jobId || null });
+        if (!data || data.ok !== true) {
+          throw new Error(data?.error || translate('status.aiUnknownFailure'));
         }
-        const createdRuleId = data?.rule?.id;
-        updateAiFormStatus({ loading: true, stageKey: 'status.aiStageCreatingRule', requestId: backendRequestId });
-        updateEntitlementsFromResponse(data);
-        updateAiFormStatus({ loading: true, stageKey: 'status.aiStageRefreshingRules', requestId: backendRequestId });
-        await loadRules();
-        if (createdRuleId && !state.rules.some(rule => rule.id === createdRuleId)) {
-          const persistedError = new Error(translate('status.aiRuleNotPersisted'));
-          persistedError.code = 'RULE_NOT_VISIBLE_AFTER_REFRESH';
-          persistedError.requestId = backendRequestId;
-          throw persistedError;
+        if (data.status === 'cached' && data.rule?.id) {
+          updateEntitlementsFromResponse(data);
+          await loadRules();
+          updateAiFormStatus({ loading: false, message: translate('status.aiJobCached'), type: 'success', stageKey: '', requestId: backendRequestId, jobId: null });
+          setStatus(translate('status.aiJobCached'), 'success');
+          await loadOrders(true);
+          return;
         }
-        if (data && data.rule && data.rule.aiModel) {
-          const modelInput = document.getElementById('aiModel');
-          if (modelInput) modelInput.value = data.rule.aiModel;
+        if (data.status === 'pending' && data.jobId) {
+          updateAiFormStatus({ loading: true, stageKey: 'status.aiQueued', requestId: backendRequestId, jobId: data.jobId });
+          startAiJobPolling(data.jobId, backendRequestId, data.pollIntervalMs || 2500);
+          return;
         }
-        updateAiFormStatus({ loading: false, message: translate('status.aiStageSuccess'), type: 'success', stageKey: '', requestId: backendRequestId });
-        setStatus(translate('status.aiGenerated'), 'success');
-        logAiTrace('rule_created_success', { requestId: backendRequestId, createdRuleId });
-        await loadOrders(true);
+        throw new Error(translate('status.aiResponseMalformed'));
       } catch (err) {
         logAiTrace('rule_create_failed', {
           requestId: err?.requestId || requestId,
@@ -2942,7 +3039,7 @@
       } finally {
         aiGenerateBtn.disabled = false;
         delete aiGenerateBtn.dataset.loading;
-        if (state.aiRequest.loading) {
+        if (state.aiRequest.loading && !state.aiRequest.jobId) {
           updateAiFormStatus({ loading: false, stageKey: '' });
         }
       }
@@ -2964,7 +3061,8 @@
       state.performanceMetrics = null;
       state.security = defaultSecurityState();
       state.loginMfaRequired = false;
-      state.aiRequest = { loading: false, message: '', type: '', stageKey: '', requestId: '' };
+      clearPendingAiJob();
+      state.aiRequest = { loading: false, message: '', type: '', stageKey: '', requestId: '', jobId: null };
       if (state.auth) {
         state.auth.login = { loading: false, message: '', type: '' };
         state.auth.register = { loading: false, message: '', type: '' };
@@ -3095,6 +3193,7 @@
       if (state.token) {
         try {
           await bootstrapDashboard();
+          resumePendingAiJobIfAny();
         } catch (err) {
           console.error('init error', err);
           setStatus(err.message, 'error');
