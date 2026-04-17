@@ -3641,8 +3641,12 @@ app.get("/api/trades/completed", authRequired(handleAsync(async (req, res) => {
 function parseAiRoleResponse(text) {
   const resolvedText = extractLlmText(text);
   if (!resolvedText) throw new Error("AI response was empty.");
-  const maybeJsonObject = extractFirstJsonObject(resolvedText);
-  const cleaned = (maybeJsonObject || resolvedText).replace(/```json|```/gi, "").replace(/\r/g, "").trim();
+  const withoutThinking = String(resolvedText)
+    .replace(/<think[\s\S]*?<\/think>/gi, " ")
+    .replace(/^\s*thinking[\s\S]*?(?=\{|\[)/i, " ")
+    .trim();
+  const maybeJsonObject = extractFirstJsonObject(withoutThinking);
+  const cleaned = (maybeJsonObject || withoutThinking).replace(/```json|```/gi, "").replace(/\r/g, "").trim();
   if (!cleaned) throw new Error("AI response was empty.");
 
   const parseNumeric = value => {
@@ -3663,22 +3667,28 @@ function parseAiRoleResponse(text) {
 
   try {
     const parsedJson = JSON.parse(cleaned);
-    if (parsedJson && typeof parsedJson === "object" && !Array.isArray(parsedJson)) {
-      if (parsedJson.error) {
-        throw new Error(`AI error: ${parsedJson.error}`);
+    const root = Array.isArray(parsedJson) ? parsedJson.find(item => item && typeof item === "object") : parsedJson;
+    const payload = (root && typeof root === "object" && !Array.isArray(root))
+      ? (root.recommendation || root.rule || root.data || root.signal || root)
+      : null;
+    if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+      if (payload.error) {
+        throw new Error(`AI error: ${payload.error}`);
       }
-      const candidateSymbol = parsedJson.symbol || parsedJson.pair || parsedJson.ticker;
+      const candidateSymbol = payload.symbol || payload.pair || payload.ticker || payload.tradingPair || payload.trading_pair;
       if (candidateSymbol) {
         symbol = String(candidateSymbol).toUpperCase().replace(/[^A-Z0-9]/g, "");
       }
-      const candidateEntry = parsedJson.entryPrice ?? parsedJson.entry ?? parsedJson.buy;
-      const candidateExit = parsedJson.exitPrice ?? parsedJson.takeProfit ?? parsedJson.sell;
+      const candidateEntry = payload.entryPrice ?? payload.entry ?? payload.buy ?? payload.entry_price;
+      const candidateExit = payload.exitPrice ?? payload.takeProfit ?? payload.sell ?? payload.targetPrice ?? payload.target_price;
       entryPrice = parseNumeric(candidateEntry);
       exitPrice = parseNumeric(candidateExit);
-      if (typeof parsedJson.summary === "string") {
-        summary = parsedJson.summary.trim();
-      } else if (typeof parsedJson.reason === "string") {
-        summary = parsedJson.reason.trim();
+      if (typeof payload.summary === "string") {
+        summary = payload.summary.trim();
+      } else if (typeof payload.reason === "string") {
+        summary = payload.reason.trim();
+      } else if (typeof payload.rationale === "string") {
+        summary = payload.rationale.trim();
       }
     }
   } catch (err) {
@@ -3740,9 +3750,7 @@ function parseAiRoleResponse(text) {
     throw new Error("Unable to read the trading pair or price targets from the AI response.");
   }
 
-  if (!symbol.endsWith("USDT") && symbol.includes("/")) {
-    symbol = symbol.replace(/\//g, "");
-  }
+  symbol = symbol.replace(/[\/\-_]/g, "");
 
   if (symbol.length < 6) {
     throw new Error("The trading pair suggested by the AI is not valid for spot trading.");

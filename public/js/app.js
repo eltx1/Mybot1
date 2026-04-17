@@ -2999,7 +2999,8 @@
       aiGenerateBtn.dataset.loading = 'true';
       aiGenerateBtn.disabled = true;
       updateAiFormStatus({ loading: true, message: '', type: '', stageKey: 'status.aiStagePreparingMarket', requestId, jobId: null });
-      const requestPayload = { budgetUSDT: budget, locale: state.language, requestId };
+      const selectedModel = typeof aiModelInput?.value === 'string' ? aiModelInput.value.trim() : '';
+      const requestPayload = { budgetUSDT: budget, locale: state.language, model: selectedModel || undefined, requestId };
       logAiTrace('request_payload_built', { requestId, requestPayload });
       try {
         updateAiFormStatus({ loading: true, stageKey: 'status.aiStageSendingRequest', requestId });
@@ -3021,9 +3022,17 @@
           await loadOrders(true);
           return;
         }
-        if (data.status === 'pending' && data.jobId) {
-          updateAiFormStatus({ loading: true, stageKey: 'status.aiQueued', requestId: backendRequestId, jobId: data.jobId });
-          startAiJobPolling(data.jobId, backendRequestId, data.pollIntervalMs || 2500);
+        const queuedJobId = Number(data?.jobId ?? data?.job?.id);
+        const hasQueuedJob = Number.isFinite(queuedJobId) && queuedJobId > 0;
+        if ((data.status === 'pending' || data.status === 'processing' || data.status === 'queued') && hasQueuedJob) {
+          updateAiFormStatus({ loading: true, stageKey: 'status.aiQueued', requestId: backendRequestId, jobId: queuedJobId });
+          startAiJobPolling(queuedJobId, backendRequestId, data.pollIntervalMs || 2500);
+          return;
+        }
+        if (hasQueuedJob) {
+          logAiTrace('unexpected_queue_status_fallback', { requestId: backendRequestId, status: data?.status || null, jobId: queuedJobId });
+          updateAiFormStatus({ loading: true, stageKey: 'status.aiQueued', requestId: backendRequestId, jobId: queuedJobId });
+          startAiJobPolling(queuedJobId, backendRequestId, data.pollIntervalMs || 2500);
           return;
         }
         throw new Error(translate('status.aiResponseMalformed'));
