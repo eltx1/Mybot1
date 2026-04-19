@@ -283,3 +283,81 @@ test('manual rules honour indicator entry and exit filters', async () => {
   await processor.processSnapshot(snapshot);
   assert.equal(placeLimitCalls.filter(c => c.side === 'SELL').length, 1, 'sell should be placed once MACD exit passes');
 });
+
+test('scalping rules place fee-aware buy and sell targets', async () => {
+  const { createEngineProcessor } = await strategyModulePromise;
+  const savedStates = new Map();
+  const processor = createEngineProcessor({
+    loadRuleState: async ({ ruleId }) => savedStates.get(ruleId) || null,
+    saveRuleState: async ({ ruleId, state }) => {
+      savedStates.set(ruleId, state ? JSON.parse(JSON.stringify(state)) : null);
+    }
+  });
+
+  const now = Date.now();
+  const buyTrade = { id: 99, isBuyer: true, qty: '1', price: '99.9', time: now };
+  const placeLimitCalls = [];
+  const openOrdersStore = [];
+  let nextOrderId = 1;
+  let tradeCalls = 0;
+  const fakeBinance = {
+    exchangeInfo: async () => ({
+      symbols: [{
+        symbol: 'BTCUSDT',
+        filters: [
+          { filterType: 'LOT_SIZE', stepSize: '0.001', minQty: '0.001' },
+          { filterType: 'PRICE_FILTER', tickSize: '0.01' },
+          { filterType: 'MIN_NOTIONAL', minNotional: '10' }
+        ]
+      }]
+    }),
+    avgPrice: async () => ({ price: '100' }),
+    openOrders: async () => openOrdersStore.map(order => ({ ...order })),
+    myTrades: async () => {
+      tradeCalls += 1;
+      return tradeCalls >= 2 ? [buyTrade] : [];
+    },
+    placeLimit: async (symbol, side, qty, price, options = {}) => {
+      placeLimitCalls.push({ symbol, side, qty, price, options });
+      openOrdersStore.push({
+        clientOrderId: options?.clientOrderId || `ID${nextOrderId}`,
+        orderId: String(nextOrderId),
+        side,
+        price: String(price),
+        origQty: String(qty),
+        quantity: String(qty)
+      });
+      nextOrderId += 1;
+    },
+    cancelOrder: async () => {},
+    placeStopLossLimit: async () => {}
+  };
+
+  const snapshot = {
+    userId: 1,
+    binance: fakeBinance,
+    rules: [{
+      id: 'scalp-1',
+      type: 'scalping',
+      symbol: 'BTCUSDT',
+      budgetUSDT: 100,
+      enabled: true,
+      createdAt: now - 5000,
+      indicatorSettings: {
+        mode: 'scalping',
+        feeRatePct: 0.1,
+        netProfitQuote: 0.1
+      }
+    }]
+  };
+
+  await processor.processSnapshot(snapshot);
+  await processor.processSnapshot(snapshot);
+
+  const buyOrder = placeLimitCalls.find(call => call.side === 'BUY');
+  const sellOrder = placeLimitCalls.find(call => call.side === 'SELL');
+  assert.ok(buyOrder);
+  assert.ok(sellOrder);
+  assert.equal(buyOrder.price, 99.9);
+  assert.ok(sellOrder.price > buyOrder.price);
+});

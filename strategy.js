@@ -657,11 +657,40 @@ function findRecentBuy(trades, state, rule, targetPrice, filters) {
   return null;
 }
 
+function resolveRuleType(rule) {
+  const raw = String(rule?.type || "manual").toLowerCase();
+  if (raw === "ai") return "ai";
+  if (raw === "scalping") return "scalping";
+  return "manual";
+}
+
+function buildScalpingProfile(rule, qty, buyTarget, filters) {
+  const settings = rule?.indicatorSettings && typeof rule.indicatorSettings === "object"
+    ? rule.indicatorSettings
+    : {};
+  const feeRatePct = Number(settings.feeRatePct);
+  const feeRate = Number.isFinite(feeRatePct) && feeRatePct > 0 ? feeRatePct / 100 : 0.001;
+  const netProfitQuote = Number(settings.netProfitQuote ?? settings.netProfitUSDT ?? settings.netProfit);
+  if (!(qty > 0) || !(buyTarget > 0) || !(netProfitQuote > 0)) return null;
+  if (feeRate >= 0.99) return null;
+  const requiredSellPrice = (buyTarget * (1 + feeRate) + (netProfitQuote / qty)) / (1 - feeRate);
+  const sellTarget = roundToTick(requiredSellPrice, filters.tickSize);
+  if (!(sellTarget > buyTarget)) return null;
+  const grossPct = ((sellTarget - buyTarget) / buyTarget) * 100;
+  if (!(grossPct > 0)) return null;
+  return {
+    feeRatePct: Number((feeRate * 100).toFixed(4)),
+    netProfitQuote,
+    sellTarget,
+    grossPct
+  };
+}
+
 async function processRule({ binance, rule, caches, userId, hooks, stateManager }) {
   const symbol = (rule.symbol || "").toUpperCase();
   if (!symbol || rule.enabled === false) return;
 
-  const type = String(rule.type || "manual").toLowerCase() === "ai" ? "ai" : "manual";
+  const type = resolveRuleType(rule);
   const budget = Number(rule.budgetUSDT);
   if (!(budget > 0)) return;
 
@@ -693,6 +722,15 @@ async function processRule({ binance, rule, caches, userId, hooks, stateManager 
     const currentPrice = await getCurrentPrice(symbol, binance, caches);
     if (!(currentPrice > 0)) return;
     buyTarget = roundToTick(currentPrice * (1 - dipPct / 100), filters.tickSize);
+  } else if (type === "scalping") {
+    const settings = rule?.indicatorSettings && typeof rule.indicatorSettings === "object"
+      ? rule.indicatorSettings
+      : {};
+    const feeRatePct = Number(settings.feeRatePct);
+    const feeRate = Number.isFinite(feeRatePct) && feeRatePct > 0 ? feeRatePct / 100 : 0.001;
+    const currentPrice = await getCurrentPrice(symbol, binance, caches);
+    if (!(currentPrice > 0)) return;
+    buyTarget = roundToTick(currentPrice * (1 - feeRate), filters.tickSize);
   } else {
     buyTarget = roundToTick(Number(rule.entryPrice), filters.tickSize);
   }
@@ -701,6 +739,16 @@ async function processRule({ binance, rule, caches, userId, hooks, stateManager 
   let qty = floorToStep(budget / buyTarget, filters.stepSize);
   if (qty < filters.minQty || qty * buyTarget < filters.minNotional) {
     return;
+  }
+  let effectiveRule = rule;
+  if (type === "scalping") {
+    const profile = buildScalpingProfile(rule, qty, buyTarget, filters);
+    if (!profile) return;
+    effectiveRule = {
+      ...rule,
+      tpPct: profile.grossPct,
+      takeProfitSteps: [{ profitPct: profile.grossPct, portionPct: 100 }]
+    };
   }
 
   const reportIssue = async (code, message) => {
@@ -777,7 +825,7 @@ async function processRule({ binance, rule, caches, userId, hooks, stateManager 
 
   const newBuyTrade = findRecentBuy(trades, state, rule, buyTarget, filters);
   if (newBuyTrade) {
-    const nextState = buildInitialStateFromTrade(rule, newBuyTrade, filters);
+    const nextState = buildInitialStateFromTrade(effectiveRule, newBuyTrade, filters);
     if (nextState) {
       state = nextState;
       await stateManager.save(rule.id, state);
@@ -852,7 +900,7 @@ async function processRule({ binance, rule, caches, userId, hooks, stateManager 
   await ensureTakeProfitOrders({
     binance,
     symbol,
-    rule,
+    rule: effectiveRule,
     state,
     orders: refreshedOrders,
     filters,

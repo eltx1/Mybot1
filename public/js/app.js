@@ -144,6 +144,28 @@
             actions: "Actions"
           }
         },
+        scalping: {
+          title: "Scalping bot",
+          description: "Fast limit buy/sell rounds with fee-aware net profit per cycle.",
+          symbolLabel: "Pair",
+          symbolPlaceholder: "Example: BTCUSDT",
+          budgetLabel: "Bot budget (USDT)",
+          budgetPlaceholder: "50",
+          netProfitLabel: "Net profit per cycle (USDT)",
+          netProfitPlaceholder: "0.05",
+          feeLabel: "Binance fee per side %",
+          feePlaceholder: "0.1",
+          add: "Add scalping bot",
+          helper: "The bot keeps running and re-enters after each filled sell order until you disable or delete it.",
+          tableTitle: "Scalping bots",
+          table: {
+            rule: "Rule",
+            strategy: "Scalping setup",
+            budget: "Budget",
+            status: "Status",
+            actions: "Actions"
+          }
+        },
         ai: {
           title: "AI-powered rule",
           description: "Request a market-ready spot strategy backed by real-time research.",
@@ -236,6 +258,12 @@
           macdBearish: "Bearish",
           empty: "No manual rules yet."
         },
+        scalpingRules: {
+          netProfitLabel: "Net profit",
+          feeLabel: "Fee/side",
+          calcLabel: "Auto target",
+          empty: "No scalping bots yet."
+        },
         aiRules: {
           summaryToggle: "View AI summary",
           empty: "No AI rules yet."
@@ -256,6 +284,7 @@
           keysSaved: "API keys saved.",
           keysRemoved: "Connection removed.",
           manualAdded: "Manual rule added.",
+          scalpingAdded: "Scalping bot added.",
           manualSynced: "Rules synced with engine.",
           aiGenerated: "AI rule generated successfully.",
           aiGenerating: "Generating your AI rule and validating it...",
@@ -290,6 +319,7 @@
           rulePaused: "Rule paused.",
           ruleDeleted: "Rule deleted.",
           aiBudgetInvalid: "Enter a valid AI budget.",
+          scalpingInvalid: "Enter valid scalping settings.",
           manualLocked: "Manual rules are disabled for your current plan.",
           aiLocked: "AI rules are disabled for your current plan.",
           manualLimit: "Your plan allows up to {{count}} manual rules.",
@@ -485,6 +515,28 @@
             actions: "إجراءات"
           }
         },
+        scalping: {
+          title: "بوت سكالبينج",
+          description: "دورات شراء/بيع سريعة بأوامر ليمت مع احتساب الرسوم وصافي الربح لكل دورة.",
+          symbolLabel: "الزوج",
+          symbolPlaceholder: "مثال: BTCUSDT",
+          budgetLabel: "ميزانية البوت (USDT)",
+          budgetPlaceholder: "50",
+          netProfitLabel: "صافي الربح لكل دورة (USDT)",
+          netProfitPlaceholder: "0.05",
+          feeLabel: "رسوم بينانس لكل جهة %",
+          feePlaceholder: "0.1",
+          add: "إضافة بوت سكالبينج",
+          helper: "يستمر البوت في العمل ويعيد الدخول بعد كل بيع مكتمل حتى توقفه أو تحذفه.",
+          tableTitle: "بوتات السكالبينج",
+          table: {
+            rule: "القاعدة",
+            strategy: "إعداد السكالبينج",
+            budget: "الميزانية",
+            status: "الحالة",
+            actions: "إجراءات"
+          }
+        },
         ai: {
           title: "قاعدة بالذكاء الاصطناعي",
           description: "اطلب إستراتيجية تداول فورية مدعومة ببحث لحظي.",
@@ -577,6 +629,12 @@
           macdBearish: "هابط",
           empty: "لا توجد قواعد يدوية بعد."
         },
+        scalpingRules: {
+          netProfitLabel: "صافي الربح",
+          feeLabel: "الرسوم/جهة",
+          calcLabel: "الهدف المحسوب",
+          empty: "لا توجد بوتات سكالبينج بعد."
+        },
         aiRules: {
           summaryToggle: "عرض ملخص الذكاء الاصطناعي",
           empty: "لا توجد قواعد ذكاء اصطناعي بعد."
@@ -597,6 +655,7 @@
           keysSaved: "تم حفظ مفاتيح API.",
           keysRemoved: "تم إلغاء الربط.",
           manualAdded: "تمت إضافة القاعدة اليدوية.",
+          scalpingAdded: "تمت إضافة بوت السكالبينج.",
           manualSynced: "تمت مزامنة القواعد مع المحرك.",
           aiGenerated: "تم توليد قاعدة ذكاء اصطناعي بنجاح.",
           aiGenerating: "جارٍ توليد قاعدة الذكاء الاصطناعي والتحقق منها...",
@@ -631,6 +690,7 @@
           rulePaused: "تم إيقاف القاعدة.",
           ruleDeleted: "تم حذف القاعدة.",
           aiBudgetInvalid: "أدخل ميزانية صحيحة للذكاء الاصطناعي.",
+          scalpingInvalid: "أدخل إعدادات سكالبينج صحيحة.",
           manualLocked: "القواعد اليدوية غير متاحة في باقتك الحالية.",
           aiLocked: "قواعد الذكاء الاصطناعي غير متاحة في باقتك الحالية.",
           manualLimit: "باقتك تسمح حتى {{count}} من القواعد اليدوية.",
@@ -768,6 +828,7 @@
     const apiKeysForm = document.getElementById('apiKeysForm');
     const removeKeysBtn = document.getElementById('removeKeys');
     const manualForm = document.getElementById('manualForm');
+    const scalpingForm = document.getElementById('scalpingForm');
     const syncRulesBtn = document.getElementById('syncRules');
     const aiForm = document.getElementById('aiForm');
     const aiGenerateBtn = document.getElementById('aiGenerate');
@@ -775,11 +836,13 @@
     const aiBudgetInput = document.getElementById('aiBudget');
     const aiModelInput = document.getElementById('aiModel');
     const manualTableBody = document.querySelector('#manualRulesTable tbody');
+    const scalpingTableBody = document.querySelector('#scalpingRulesTable tbody');
     const aiTableBody = document.querySelector('#aiRulesTable tbody');
     const ordersTableBody = document.querySelector('#ordersTable tbody');
     const completedTradesList = document.getElementById('completedTradesList');
     const completedTradesNotice = document.getElementById('completedTradesNotice');
     const manualCountEl = document.getElementById('manualCount');
+    const scalpingCountEl = document.getElementById('scalpingCount');
     const aiCountEl = document.getElementById('aiCount');
     const manualHighlightCount = document.getElementById('manualHighlightCount');
     const manualHighlightMeta = document.getElementById('manualHighlightMeta');
@@ -1194,6 +1257,7 @@
 
     function renderTables() {
       renderManualRules();
+      renderScalpingRules();
       renderAiRules();
       announceRuleErrors();
       applyEntitlementsUI();
@@ -1602,6 +1666,59 @@
       }
     }
 
+    function renderScalpingRules() {
+      const scalpingRules = state.rules.filter(r => (r.type || '').toLowerCase() === 'scalping');
+      const ent = state.entitlements || {};
+      const manualLimit = Number(ent?.manualLimit);
+      const manualEnabled = Boolean(ent && ent.manualEnabled);
+      const activeManual = state.rules.filter(r => {
+        const type = (r.type || '').toLowerCase();
+        return (type === 'manual' || type === 'scalping') && r.enabled;
+      }).length;
+      scalpingTableBody.innerHTML = '';
+      const loading = state.isRulesLoading && !scalpingRules.length;
+      const errorMessage = resolveUiMessage(state.rulesError, 'status.rulesError');
+      if (loading) {
+        appendTablePlaceholder(scalpingTableBody, 5, translate('status.rulesLoading'), { loading: true });
+        return;
+      }
+      if (errorMessage && !scalpingRules.length) {
+        appendTablePlaceholder(scalpingTableBody, 5, errorMessage, { variant: 'error' });
+        return;
+      }
+      if (!scalpingRules.length) {
+        appendTablePlaceholder(scalpingTableBody, 5, translate('scalpingRules.empty'));
+        return;
+      }
+      for (const rule of scalpingRules) {
+        const tr = document.createElement('tr');
+        const settings = rule.indicatorSettings && typeof rule.indicatorSettings === 'object' ? rule.indicatorSettings : {};
+        const netProfit = Number(settings.netProfitQuote);
+        const feeRate = Number(settings.feeRatePct);
+        const capReached = Number.isFinite(manualLimit) && manualLimit > 0 && activeManual >= manualLimit;
+        const toggleDisabled = !manualEnabled || (!rule.enabled && capReached);
+        tr.innerHTML = `
+          <td data-label="${escapeHtml(translate('scalping.table.rule'))}"><div class="symbol">${escapeHtml(rule.symbol)}</div></td>
+          <td data-label="${escapeHtml(translate('scalping.table.strategy'))}">
+            <div class="muted small">${escapeHtml(translate('scalpingRules.netProfitLabel'))}: <strong>${escapeHtml(formatCurrency(netProfit))}</strong></div>
+            <div class="muted small">${escapeHtml(translate('scalpingRules.feeLabel'))}: ${escapeHtml(formatPercent(feeRate))}</div>
+            <div class="muted small">${escapeHtml(translate('scalpingRules.calcLabel'))}: ${escapeHtml(translate('manual.partialsLabel'))} 100%</div>
+          </td>
+          <td data-label="${escapeHtml(translate('scalping.table.budget'))}">${formatCurrency(rule.budgetUSDT)}</td>
+          <td data-label="${escapeHtml(translate('scalping.table.status'))}">
+            <label class="switch">
+              <input type="checkbox" data-action="toggle" data-id="${rule.id}" ${rule.enabled ? 'checked' : ''} ${toggleDisabled ? 'disabled' : ''}>
+              <span class="slider"></span>
+            </label>
+          </td>
+          <td data-label="${escapeHtml(translate('scalping.table.actions'))}">
+            <button class="btn-text danger" data-action="delete" data-id="${rule.id}">${escapeHtml(translate('common.delete'))}</button>
+          </td>
+        `;
+        scalpingTableBody.appendChild(tr);
+      }
+    }
+
     function renderOrders(rows) {
       currentOrdersCache = Array.isArray(rows) ? rows : [];
       ordersTableBody.innerHTML = '';
@@ -1889,7 +2006,11 @@
       const aiEnabled = Boolean(state.token && ent && ent.aiEnabled);
       const manualLimit = Number(ent?.manualLimit);
       const aiLimit = Number(ent?.aiLimit);
-      const activeManual = state.rules.filter(r => (r.type || '').toLowerCase() === 'manual' && r.enabled).length;
+      const activeManual = state.rules.filter(r => {
+        const type = (r.type || '').toLowerCase();
+        return (type === 'manual' || type === 'scalping') && r.enabled;
+      }).length;
+      const activeScalping = state.rules.filter(r => (r.type || '').toLowerCase() === 'scalping' && r.enabled).length;
       const activeAi = state.rules.filter(r => (r.type || '').toLowerCase() === 'ai' && r.enabled).length;
       const manualCapReached = manualEnabled && Number.isFinite(manualLimit) && manualLimit >= 0 && activeManual >= manualLimit;
       const aiCapReached = aiEnabled && Number.isFinite(aiLimit) && aiLimit >= 0 && activeAi >= aiLimit;
@@ -1899,6 +2020,9 @@
       }
       if (aiCountEl) {
         aiCountEl.textContent = formatUsageCount(activeAi, aiLimit);
+      }
+      if (scalpingCountEl) {
+        scalpingCountEl.textContent = formatUsageCount(activeScalping, manualLimit);
       }
 
       if (manualHighlightCount) {
@@ -1955,6 +2079,16 @@
           input.disabled = !manualEnabled;
         });
         const submit = manualForm.querySelector('button[type="submit"]');
+        if (submit) {
+          submit.disabled = !manualEnabled || manualCapReached;
+        }
+      }
+      if (scalpingForm) {
+        const inputs = scalpingForm.querySelectorAll('input, select');
+        inputs.forEach(input => {
+          input.disabled = !manualEnabled;
+        });
+        const submit = scalpingForm.querySelector('button[type="submit"]');
         if (submit) {
           submit.disabled = !manualEnabled || manualCapReached;
         }
@@ -2847,7 +2981,10 @@
         return;
       }
       const manualLimit = Number(ent?.manualLimit);
-      const activeManual = state.rules.filter(r => (r.type || '').toLowerCase() === 'manual' && r.enabled).length;
+      const activeManual = state.rules.filter(r => {
+        const type = (r.type || '').toLowerCase();
+        return (type === 'manual' || type === 'scalping') && r.enabled;
+      }).length;
       if (Number.isFinite(manualLimit) && manualLimit > 0 && activeManual >= manualLimit) {
         setStatus(translate('status.manualLimit', { count: manualLimit }), 'error');
         return;
@@ -2887,6 +3024,54 @@
       }
     }
 
+    async function addScalpingRule(event) {
+      event.preventDefault();
+      const ent = state.entitlements || {};
+      if (!ent || !ent.plan || ent.manualEnabled === false) {
+        setStatus(translate('status.manualLocked'), 'error');
+        return;
+      }
+      const manualLimit = Number(ent?.manualLimit);
+      const activeManual = state.rules.filter(r => {
+        const type = (r.type || '').toLowerCase();
+        return (type === 'manual' || type === 'scalping') && r.enabled;
+      }).length;
+      if (Number.isFinite(manualLimit) && manualLimit > 0 && activeManual >= manualLimit) {
+        setStatus(translate('status.manualLimit', { count: manualLimit }), 'error');
+        return;
+      }
+      const symbol = document.getElementById('scalpSymbol')?.value?.trim()?.toUpperCase();
+      const budgetUSDT = Number(document.getElementById('scalpBudget')?.value);
+      const netProfitQuote = Number(document.getElementById('scalpNetProfit')?.value);
+      const feeRatePct = Number(document.getElementById('scalpFeePct')?.value);
+      if (!symbol || !(budgetUSDT > 0) || !(netProfitQuote > 0) || !(feeRatePct > 0)) {
+        setStatus(translate('status.scalpingInvalid'), 'error');
+        return;
+      }
+      const rule = {
+        id: generateId(),
+        type: 'scalping',
+        symbol,
+        budgetUSDT,
+        enabled: true,
+        createdAt: Date.now(),
+        indicatorSettings: {
+          mode: 'scalping',
+          feeRatePct,
+          netProfitQuote
+        }
+      };
+      const next = [...state.rules, rule];
+      try {
+        await persistAll(next, { text: translate('status.scalpingAdded'), type: 'success' });
+        scalpingForm.reset();
+        const feeInput = document.getElementById('scalpFeePct');
+        if (feeInput) feeInput.value = '0.1';
+      } catch (err) {
+        setStatus(err.message, 'error');
+      }
+    }
+
     async function syncRules() {
       try {
         const response = await api('/api/rules/sync', { method: 'POST' });
@@ -2908,12 +3093,12 @@
         const ent = state.entitlements || {};
         const type = (rule.type || '').toLowerCase();
         if (!ent || !ent.plan) {
-          const messageKey = type === 'manual' ? 'status.manualLocked' : 'status.aiLocked';
+          const messageKey = (type === 'manual' || type === 'scalping') ? 'status.manualLocked' : 'status.aiLocked';
           setStatus(translate(messageKey), 'error');
           renderTables();
           return;
         }
-        if (type === 'manual') {
+        if (type === 'manual' || type === 'scalping') {
           if (ent.manualEnabled === false) {
             setStatus(translate('status.manualLocked'), 'error');
             renderTables();
@@ -2921,7 +3106,10 @@
           }
           const manualLimit = Number(ent?.manualLimit);
           if (Number.isFinite(manualLimit) && manualLimit > 0) {
-            const activeManual = state.rules.filter(r => (r.type || '').toLowerCase() === 'manual' && r.enabled).length;
+            const activeManual = state.rules.filter(r => {
+              const nextType = (r.type || '').toLowerCase();
+              return (nextType === 'manual' || nextType === 'scalping') && r.enabled;
+            }).length;
             const nextActive = rule.enabled ? activeManual : activeManual + 1;
             if (nextActive > manualLimit) {
               setStatus(translate('status.manualLimit', { count: manualLimit }), 'error');
@@ -3138,6 +3326,7 @@
     apiKeysForm.addEventListener('submit', submitApiKeys);
     removeKeysBtn.addEventListener('click', removeApiKeys);
     manualForm.addEventListener('submit', addManualRule);
+    if (scalpingForm) scalpingForm.addEventListener('submit', addScalpingRule);
     syncRulesBtn.addEventListener('click', syncRules);
     aiForm.addEventListener('submit', generateAiRule);
     if (alertSettingsForm) alertSettingsForm.addEventListener('submit', submitAlertSettings);
