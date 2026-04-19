@@ -2640,7 +2640,7 @@ function normalizeRules(input) {
     rule.symbol = cleanSymbol;
 
     const rawType = typeof rule.type === "string" ? rule.type.toLowerCase() : "";
-    let type = rawType === "ai" ? "ai" : "manual";
+    let type = rawType === "ai" ? "ai" : rawType === "scalping" ? "scalping" : "manual";
     if (!rawType) {
       if (!rule.dipPct && !rule.tpPct && rule.entryPrice && rule.exitPrice) {
         type = "ai";
@@ -2722,6 +2722,30 @@ function normalizeRules(input) {
       }
       rule.entryPrice = 0;
       rule.exitPrice = 0;
+    } else if (rule.type === "scalping") {
+      const settingsRaw = rule.indicatorSettings && typeof rule.indicatorSettings === "object"
+        ? rule.indicatorSettings
+        : {};
+      const feeRatePct = Number(settingsRaw.feeRatePct);
+      const netProfitQuote = Number(
+        settingsRaw.netProfitQuote
+        ?? settingsRaw.netProfitUSDT
+        ?? settingsRaw.netProfit
+      );
+      const settings = {
+        mode: "scalping",
+        feeRatePct: Number.isFinite(feeRatePct) && feeRatePct > 0 ? Number(feeRatePct.toFixed(4)) : 0.1,
+        netProfitQuote: Number.isFinite(netProfitQuote) && netProfitQuote > 0 ? Number(netProfitQuote.toFixed(8)) : 0.05
+      };
+      if (JSON.stringify(settings) !== JSON.stringify(rule.indicatorSettings || null)) {
+        mutated = true;
+      }
+      rule.indicatorSettings = settings;
+      rule.dipPct = 0;
+      rule.tpPct = 0;
+      rule.entryPrice = 0;
+      rule.exitPrice = 0;
+      rule.takeProfitSteps = [];
     } else {
       const entry = Number(rule.entryPrice);
       if (Number.isFinite(entry)) {
@@ -2800,7 +2824,7 @@ function applyEntitlementsToRules(rules, entitlements) {
   const aiIndexes = [];
   result.forEach((rule, index) => {
     const type = (rule.type || "").toLowerCase();
-    if (type === "manual") manualIndexes.push(index);
+    if (type === "manual" || type === "scalping") manualIndexes.push(index);
     else if (type === "ai") aiIndexes.push(index);
   });
 
@@ -2855,6 +2879,12 @@ function applyEntitlementsToRules(rules, entitlements) {
 
 function countActiveRules(rules, type) {
   const target = (type || "").toLowerCase();
+  if (target === "manual") {
+    return rules.filter(rule => {
+      const ruleType = (rule.type || "").toLowerCase();
+      return (ruleType === "manual" || ruleType === "scalping") && rule.enabled;
+    }).length;
+  }
   return rules.filter(rule => (rule.type || "").toLowerCase() === target && rule.enabled).length;
 }
 

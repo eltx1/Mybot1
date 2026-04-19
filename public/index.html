@@ -415,6 +415,35 @@
         </article>
 
         <article class="card">
+          <h2 data-i18n="scalping.title">Scalping bot</h2>
+          <p data-i18n="scalping.description">Fast limit buy/sell rounds with fee-aware net profit per cycle.</p>
+          <form id="scalpingForm">
+            <div class="form-row">
+              <div>
+                <label for="scalpSymbol" data-i18n="scalping.symbolLabel">Pair</label>
+                <input id="scalpSymbol" required data-i18n-placeholder="scalping.symbolPlaceholder">
+              </div>
+              <div>
+                <label for="scalpBudget" data-i18n="scalping.budgetLabel">Bot budget (USDT)</label>
+                <input id="scalpBudget" type="number" step="0.01" min="0" required data-i18n-placeholder="scalping.budgetPlaceholder">
+              </div>
+            </div>
+            <div class="form-row">
+              <div>
+                <label for="scalpNetProfit" data-i18n="scalping.netProfitLabel">Net profit per cycle (USDT)</label>
+                <input id="scalpNetProfit" type="number" step="0.0001" min="0" required data-i18n-placeholder="scalping.netProfitPlaceholder">
+              </div>
+              <div>
+                <label for="scalpFeePct" data-i18n="scalping.feeLabel">Binance fee per side %</label>
+                <input id="scalpFeePct" type="number" step="0.0001" min="0" value="0.1" required data-i18n-placeholder="scalping.feePlaceholder">
+              </div>
+            </div>
+            <button class="btn primary" type="submit" data-i18n="scalping.add">Add scalping bot</button>
+            <p class="muted small" data-i18n="scalping.helper">The bot keeps running and re-enters after each filled sell order until you disable or delete it.</p>
+          </form>
+        </article>
+
+        <article class="card">
           <h2 data-i18n="ai.title">AI-powered rule</h2>
           <p data-i18n="ai.description">Request a market-ready spot strategy backed by real-time research.</p>
           <div class="plan-warning" id="aiRestriction"></div>
@@ -447,6 +476,27 @@
                 <th data-i18n="manual.table.budget">Budget</th>
                 <th data-i18n="manual.table.status">Status</th>
                 <th data-i18n="manual.table.actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card table-card">
+        <div class="table-header">
+          <h2 data-i18n="scalping.tableTitle">Scalping bots</h2>
+          <span class="pill" id="scalpingCount">0</span>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table" id="scalpingRulesTable">
+            <thead>
+              <tr>
+                <th data-i18n="scalping.table.rule">Rule</th>
+                <th data-i18n="scalping.table.strategy">Scalping setup</th>
+                <th data-i18n="scalping.table.budget">Budget</th>
+                <th data-i18n="scalping.table.status">Status</th>
+                <th data-i18n="scalping.table.actions">Actions</th>
               </tr>
             </thead>
             <tbody></tbody>
