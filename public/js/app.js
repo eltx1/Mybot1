@@ -933,7 +933,9 @@
       document.documentElement.lang = lang;
       document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
       document.title = resolveTranslation(lang, 'meta.title');
-      languageToggle.textContent = lang === 'ar' ? 'English' : 'عربي';
+      if (languageToggle) {
+        languageToggle.textContent = lang === 'ar' ? 'English' : 'عربي';
+      }
 
       document.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.getAttribute('data-i18n');
@@ -1601,7 +1603,7 @@
             </label>
           </td>
           <td data-label="${escapeHtml(translate('manual.table.actions'))}">
-            <button class="btn-text danger" data-action="delete" data-id="${rule.id}">${escapeHtml(translate('common.delete'))}</button>
+            <button type="button" class="btn-text danger" data-action="delete" data-id="${rule.id}">${escapeHtml(translate('common.delete'))}</button>
           </td>
         `;
         manualTableBody.appendChild(tr);
@@ -1659,7 +1661,7 @@
             </label>
           </td>
           <td data-label="${escapeHtml(translate('ai.table.actions'))}">
-            <button class="btn-text danger" data-action="delete" data-id="${rule.id}">${escapeHtml(translate('common.delete'))}</button>
+            <button type="button" class="btn-text danger" data-action="delete" data-id="${rule.id}">${escapeHtml(translate('common.delete'))}</button>
           </td>
         `;
         aiTableBody.appendChild(tr);
@@ -1712,7 +1714,7 @@
             </label>
           </td>
           <td data-label="${escapeHtml(translate('scalping.table.actions'))}">
-            <button class="btn-text danger" data-action="delete" data-id="${rule.id}">${escapeHtml(translate('common.delete'))}</button>
+            <button type="button" class="btn-text danger" data-action="delete" data-id="${rule.id}">${escapeHtml(translate('common.delete'))}</button>
           </td>
         `;
         scalpingTableBody.appendChild(tr);
@@ -3320,22 +3322,22 @@
       });
     });
 
-    loginForm.addEventListener('submit', handleLogin);
-    registerForm.addEventListener('submit', handleRegister);
-    logoutBtn.addEventListener('click', handleLogout);
-    apiKeysForm.addEventListener('submit', submitApiKeys);
-    removeKeysBtn.addEventListener('click', removeApiKeys);
-    manualForm.addEventListener('submit', addManualRule);
+    if (loginForm) loginForm.addEventListener('submit', handleLogin);
+    if (registerForm) registerForm.addEventListener('submit', handleRegister);
+    if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
+    if (apiKeysForm) apiKeysForm.addEventListener('submit', submitApiKeys);
+    if (removeKeysBtn) removeKeysBtn.addEventListener('click', removeApiKeys);
+    if (manualForm) manualForm.addEventListener('submit', addManualRule);
     if (scalpingForm) scalpingForm.addEventListener('submit', addScalpingRule);
-    syncRulesBtn.addEventListener('click', syncRules);
-    aiForm.addEventListener('submit', generateAiRule);
+    if (syncRulesBtn) syncRulesBtn.addEventListener('click', syncRules);
+    if (aiForm) aiForm.addEventListener('submit', generateAiRule);
     if (alertSettingsForm) alertSettingsForm.addEventListener('submit', submitAlertSettings);
     if (setupMfaBtn) setupMfaBtn.addEventListener('click', setupMfa);
     if (enableMfaBtn) enableMfaBtn.addEventListener('click', openEnableMfa);
     if (disableMfaBtn) disableMfaBtn.addEventListener('click', openDisableMfa);
     if (confirmMfaBtn) confirmMfaBtn.addEventListener('click', confirmMfaAction);
-    refreshOrdersBtn.addEventListener('click', () => loadOrders());
-    refreshCompletedBtn.addEventListener('click', () => loadCompletedTrades());
+    if (refreshOrdersBtn) refreshOrdersBtn.addEventListener('click', () => loadOrders());
+    if (refreshCompletedBtn) refreshCompletedBtn.addEventListener('click', () => loadCompletedTrades());
     if (accountRealBtn) {
       accountRealBtn.addEventListener('click', event => {
         const target = accountRealBtn.getAttribute('href') || '/';
@@ -3368,9 +3370,11 @@
         }
       });
     }
-    languageToggle.addEventListener('click', () => {
-      setLanguage(state.language === 'ar' ? 'en' : 'ar');
-    });
+    if (languageToggle) {
+      languageToggle.addEventListener('click', () => {
+        setLanguage(state.language === 'ar' ? 'en' : 'ar');
+      });
+    }
 
     initAuthTabs();
 
